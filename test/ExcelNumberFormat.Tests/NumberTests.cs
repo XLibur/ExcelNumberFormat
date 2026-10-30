@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using static ExcelNumberFormat.Tests.FormatHelper;
@@ -212,6 +213,40 @@ namespace ExcelNumberFormat.Tests
         {
             await Test(1234.56, "[$€-1809]# ##0.00", "€1 234.56");
             await Test(1234.56, "#,##0.00 [$EUR]", "1,234.56 EUR");
+        }
+
+        [Test]
+        public async Task TestRoundingMatchesFifteenDigitReference()
+        {
+            // Excel rounds the value reduced to 15 significant digits, half away from zero. The formatter takes a
+            // shortcut away from ties, so compare it with that definition over many values, ties included.
+            var rng = new Random(20261030);
+            var formats = new NumberFormat[8];
+            for (var d = 0; d < formats.Length; d++)
+                formats[d] = new NumberFormat(d == 0 ? "0" : "0." + new string('0', d));
+
+            var mismatches = new List<string>();
+            for (var i = 0; i < 20000; i++)
+            {
+                var digits = rng.Next(0, 8);
+                double value;
+                switch (i % 5)
+                {
+                    case 0: value = rng.NextDouble() * Math.Pow(10, rng.Next(-3, 9)); break;
+                    case 1: value = Math.Round(rng.NextDouble() * 10000, rng.Next(1, 6)); break;
+                    case 2: value = rng.Next(0, 2000000); break;
+                    case 3: value = (rng.Next(0, 100000) + 0.5) / Math.Pow(10, rng.Next(0, 7)); break;
+                    default: value = Math.Round(rng.NextDouble() * 1000, digits + 1) + 0.5 / Math.Pow(10, digits); break;
+                }
+
+                var decimalValue = decimal.Parse(value.ToString("G15", CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture);
+                var expected = Math.Round(decimalValue, digits, MidpointRounding.AwayFromZero).ToString("F" + digits, CultureInfo.InvariantCulture);
+                var actual = formats[digits].Format(value, CultureInfo.InvariantCulture);
+                if (expected != actual)
+                    mismatches.Add($"{value:R} with {digits} digits: expected {expected}, got {actual}");
+            }
+
+            await Assert.That(mismatches).IsEmpty();
         }
 
         [Test]

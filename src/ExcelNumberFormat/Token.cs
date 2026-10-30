@@ -4,6 +4,14 @@ namespace ExcelNumberFormat
 {
     internal static class Token
     {
+        /// <summary>
+        /// True for the ".0", ".00" and ".000" sub-second tokens.
+        /// </summary>
+        public static bool IsSubSecond(string token)
+        {
+            return token.Length > 1 && token[0] == '.' && token[1] == '0';
+        }
+
         public static bool IsExponent(string token)
         {
             return
@@ -14,10 +22,7 @@ namespace ExcelNumberFormat
         public static bool IsLiteral(string token)
         {
             return
-                token.StartsWith("_") ||
-                token.StartsWith("\\") ||
-                token.StartsWith("\"") ||
-                token.StartsWith("*") ||
+                (token.Length > 0 && (token[0] == '_' || token[0] == '\\' || token[0] == '"' || token[0] == '*')) ||
                 token == "," ||
                 token == "!" ||
                 token == "&" ||

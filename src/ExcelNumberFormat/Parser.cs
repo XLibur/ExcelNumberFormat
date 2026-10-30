@@ -89,7 +89,7 @@ namespace ExcelNumberFormat
                     hasTextPart |= true;
                     tokens.Add(token);
                 }
-                else if (token.StartsWith("["))
+                else if (token.Length > 0 && token[0] == '[')
                 {
                     // Does not add to tokens. Absolute/elapsed time tokens
                     // also start with '[', but handled as date part above
@@ -223,7 +223,7 @@ namespace ExcelNumberFormat
                 {
                     remainder.Add(token);
                 }
-                else if (token.StartsWith("["))
+                else if (token.Length > 0 && token[0] == '[')
                 {
                     // ignore
                 }
@@ -307,7 +307,7 @@ namespace ExcelNumberFormat
             {
                 syntaxError = false;
                 var length = reader.Position - offset;
-                return reader.Substring(offset, length);
+                return reader.Token(offset, length);
             }
 
             syntaxError = reader.Position < reader.Length;
@@ -439,7 +439,7 @@ namespace ExcelNumberFormat
         private static bool TryParseCurrencySymbol(string token, out string currencySymbol)
         {
             if (string.IsNullOrEmpty(token)
-                || !token.StartsWith("$"))
+                || token[0] != '$')
             {
                 currencySymbol = null;
                 return false;

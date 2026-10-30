@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Numerics;
 using System.Text;
 
 namespace ExcelNumberFormat
@@ -81,7 +80,7 @@ namespace ExcelNumberFormat
             var digits = 0;
             foreach (var token in tokens)
             {
-                if (token.StartsWith(".0"))
+                if (Token.IsSubSecond(token))
                     digits = Math.Min(token.Length - 1, 3);
             }
 
@@ -153,18 +152,23 @@ namespace ExcelNumberFormat
                 mantissa |= 1L << 52;
             exponent -= 1075;
 
-            // Units per day: 86400 seconds, each split in 10^digits parts
-            var unitsPerDay = new BigInteger(86400) * BigInteger.Pow(10, digits);
-            var numerator = mantissa * unitsPerDay;
-            BigInteger units;
-            if (exponent >= 0)
+            // Units per day: 86400 seconds, each split in 10^digits parts. The mantissa has 53 bits and the
+            // units per day fit in 27, so the product fits in a UInt128 and nothing is allocated.
+            var unitsPerDay = 86400UL * (digits == 1 ? 10UL : digits == 2 ? 100UL : 1000UL);
+            var numerator = (UInt128)(ulong)mantissa * unitsPerDay;
+
+            // The guard above keeps the value under 1e7 days, so the exponent is always negative here
+            var shift = -exponent;
+            ulong units;
+            if (shift > 120)
             {
-                units = numerator << exponent;
+                // The value is far below one unit
+                units = 0;
             }
             else
             {
-                var denominator = BigInteger.One << -exponent;
-                units = (numerator * 2 + denominator) / (denominator * 2);
+                var denominator = UInt128.One << shift;
+                units = (ulong)((numerator * 2 + denominator) / (denominator * 2));
             }
 
             var rounded = (double)units / (double)unitsPerDay;
@@ -186,7 +190,7 @@ namespace ExcelNumberFormat
 
         static string FormatGeneralText(string text, List<string> tokens)
         {
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             for (var i = 0; i < tokens.Count; i++)
             {
                 var token = tokens[i];
@@ -199,18 +203,18 @@ namespace ExcelNumberFormat
                     FormatLiteral(token, result);
                 }
             }
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         private static string FormatTimeSpan(TimeSpan timeSpan, List<string> tokens, CultureInfo culture)
         {
             // NOTE/TODO: assumes there is exactly one [hh], [mm] or [ss] using the integer part of TimeSpan.TotalXXX when formatting.
             // The timeSpan input is then truncated to the remainder fraction, which is used to format mm and/or ss.
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             var containsMilliseconds = false;
             for (var i = tokens.Count - 1; i >= 0; i--)
             {
-                if (tokens[i].StartsWith(".0"))
+                if (Token.IsSubSecond(tokens[i]))
                 {
                     containsMilliseconds = true;
                     break;
@@ -256,7 +260,7 @@ namespace ExcelNumberFormat
                     result.Append(value.ToString("D" + digits));
                     timeSpan = new TimeSpan(0, 0, 0, 0, Math.Abs(timeSpan.Milliseconds));
                 }
-                else if (token.StartsWith(".0")) {
+                else if (Token.IsSubSecond(token)) {
                     result.Append(FormatSubSeconds(timeSpan.Milliseconds, token.Length - 1));
                 }
                 else
@@ -265,14 +269,14 @@ namespace ExcelNumberFormat
                 }
             }
 
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         private static string FormatDate(ExcelDateTime date, List<string> tokens, CultureInfo culture)
         {
             var containsAmPm = ContainsAmPm(tokens);
 
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             for (var i = 0; i < tokens.Count; i++)
             {
                 var token = tokens[i];
@@ -383,7 +387,7 @@ namespace ExcelNumberFormat
                         result.Append(ampm.ToLowerInvariant());
                     }
                 }
-                else if (token.StartsWith(".0"))
+                else if (Token.IsSubSecond(token))
                 {
                     result.Append(FormatSubSeconds(date.Millisecond, token.Length - 1));
                 }
@@ -406,7 +410,7 @@ namespace ExcelNumberFormat
                 }
             }
 
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         private static bool LookAheadDatePart(List<string> tokens, int fromIndex, string startsWith)
@@ -461,9 +465,9 @@ namespace ExcelNumberFormat
             value = value / format.ThousandDivisor;
             value = value * format.PercentMultiplier;
 
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             FormatNumber(value, format.BeforeDecimal, format.DecimalSeparator, format.AfterDecimal, thousandSeparator, culture, result);
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         static void FormatNumber(double value, List<string> beforeDecimal, bool decimalSeparator, List<string> afterDecimal, bool thousandSeparator, CultureInfo culture, StringBuilder result)
@@ -473,9 +477,9 @@ namespace ExcelNumberFormat
                 signitificantDigits = GetDigitCount(afterDecimal);
 
             var valueString = RoundToFixed(Math.Abs(value), signitificantDigits);
-            var valueStrings = valueString.Split('.');
-            var thousandsString = valueStrings[0];
-            var decimalString = valueStrings.Length > 1 ? valueStrings[1].TrimEnd('0') : "";
+            var decimalPoint = valueString.IndexOf('.');
+            var thousandsString = decimalPoint < 0 ? valueString : valueString.Substring(0, decimalPoint);
+            var decimalString = decimalPoint < 0 ? "" : valueString.Substring(decimalPoint + 1).TrimEnd('0');
 
             if (value < 0)
             {
@@ -501,16 +505,46 @@ namespace ExcelNumberFormat
         /// Formats a non-negative value with a fixed number of decimals, rounding half away from zero like Excel.
         /// The double is first reduced to 15 significant digits, as Excel does, so 2.675 rounds to 2.68.
         /// </summary>
+        // "F0" to "F15", so the common digit counts do not build a format string on every call
+        private static readonly string[] FixedFormats =
+        {
+            "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14", "F15"
+        };
+
+        private static readonly double[] Pow10 =
+        {
+            1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15
+        };
+
+        static string FixedFormat(int digits)
+        {
+            return digits < FixedFormats.Length ? FixedFormats[digits] : "F" + digits.ToString(CultureInfo.InvariantCulture);
+        }
+
         static string RoundToFixed(double value, int digits)
         {
+            // Double.ToString("F") is exact, so it only disagrees with Excel's 15 digit rounding at or very near a tie.
+            // Away from a tie the plain format gives the same digits and skips the string/decimal round trip below.
+            // The scaled value stays under 1e9, which keeps the error in its fractional part well below the margin.
+            if (digits < FixedFormats.Length && value < 1e9)
+            {
+                var scaled = value * Pow10[digits];
+                if (scaled < 1e9)
+                {
+                    var fraction = scaled - Math.Floor(scaled);
+                    if (Math.Abs(fraction - 0.5) > 1e-6)
+                        return value.ToString(FixedFormats[digits], CultureInfo.InvariantCulture);
+                }
+            }
+
             if (digits <= 28 && value < 7.9e28)
             {
                 var decimalValue = decimal.Parse(value.ToString("G15", CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture);
                 var rounded = Math.Round(decimalValue, digits, MidpointRounding.AwayFromZero);
-                return rounded.ToString("F" + digits, CultureInfo.InvariantCulture);
+                return rounded.ToString(FixedFormat(digits), CultureInfo.InvariantCulture);
             }
 
-            return value.ToString("F" + digits, CultureInfo.InvariantCulture);
+            return value.ToString(FixedFormat(digits), CultureInfo.InvariantCulture);
         }
 
         /// <summary>
@@ -654,7 +688,7 @@ namespace ExcelNumberFormat
                 }
             }
 
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             FormatNumber(mantissa, format.Exponential.BeforeDecimal, format.Exponential.DecimalSeparator, format.Exponential.AfterDecimal, false, culture, result);
 
             result.Append(format.Exponential.ExponentialToken[0]);
@@ -669,7 +703,7 @@ namespace ExcelNumberFormat
             }
 
             FormatThousands(Math.Abs(exponent).ToString(CultureInfo.InvariantCulture), false, false, format.Exponential.Power, culture, result);
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         static string FormatFraction(double value, Section format, CultureInfo culture)
@@ -723,7 +757,7 @@ namespace ExcelNumberFormat
             var numeratorZeros = GetZeroCount(format.Fraction.Numerator);
             var hideFraction = (format.Fraction.IntegerPart != null && numerator == 0 && numeratorZeros == 0);
 
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
 
             if (sign)
                 result.Append("-");
@@ -760,7 +794,7 @@ namespace ExcelNumberFormat
             if (format.Fraction.FractionSuffix != null)
                 FormatThousands("", false, false, format.Fraction.FractionSuffix, culture, result);
 
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         // Adapted from ssf.js 'frac()' helper
