@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace Xlibur.ExcelNumberFormat
+namespace ExcelNumberFormat
 {
     internal static class Parser
     {

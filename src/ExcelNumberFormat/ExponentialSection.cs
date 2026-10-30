@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace Xlibur.ExcelNumberFormat
+namespace ExcelNumberFormat
 {
     internal class ExponentialSection
     {

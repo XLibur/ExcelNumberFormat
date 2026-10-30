@@ -2,7 +2,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace Xlibur.ExcelNumberFormat
+namespace ExcelNumberFormat
 {
     internal class FractionSection
     {

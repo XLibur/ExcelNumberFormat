@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Globalization;
 using System.Threading.Tasks;
-using static Xlibur.ExcelNumberFormat.Tests.FormatHelper;
+using static ExcelNumberFormat.Tests.FormatHelper;
 
 // Much of the test data was adapted from the SheetJS/ssf project.
 // Copyright (C) 2013-present  SheetJS. 
 // Licensed under the Apache License, Version 2.0
 
-namespace Xlibur.ExcelNumberFormat.Tests
+namespace ExcelNumberFormat.Tests
 {
     public class ConditionTests
     {
