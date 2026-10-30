@@ -3,8 +3,11 @@
 ## Contents
 
 - [Unreleased](#unreleased)
+- [v1.2.0](#v120---2026-10-30)
 
 ## Unreleased
+
+## v1.2.0 - 2026-10-30
 
 ### 💥 Breaking Changes
 
