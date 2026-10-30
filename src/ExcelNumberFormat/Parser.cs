@@ -140,6 +140,8 @@ namespace ExcelNumberFormat
             ExponentialSection exponential = null;
             DecimalSection number = null;
             List<string> generalTextDateDuration = null;
+            DateToken[] dateTokens = null;
+            var dateContainsAmPm = false;
 
             if (hasDateParts)
             {
@@ -153,6 +155,9 @@ namespace ExcelNumberFormat
                 }
 
                 ParseMilliseconds(tokens, out generalTextDateDuration);
+
+                if (type == SectionType.Date)
+                    dateTokens = DateToken.Create(generalTextDateDuration, out dateContainsAmPm);
             }
             else if (hasGeneralPart)
             {
@@ -193,7 +198,9 @@ namespace ExcelNumberFormat
                 Exponential = exponential,
                 Number = number,
                 Lcid = lcid,
-                GeneralTextDateDurationParts = generalTextDateDuration
+                GeneralTextDateDurationParts = generalTextDateDuration,
+                DateTokens = dateTokens,
+                DateContainsAmPm = dateContainsAmPm
             };
         }
 

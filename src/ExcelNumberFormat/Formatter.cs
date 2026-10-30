@@ -38,7 +38,7 @@ namespace ExcelNumberFormat
                         if (node.Lcid == 0xF400)
                             return excelDateTime.ToString(culture.DateTimeFormat.LongTimePattern, culture);
 
-                        return FormatDate(excelDateTime, node.GeneralTextDateDurationParts, culture);
+                        return FormatDate(excelDateTime, node.DateTokens, node.DateContainsAmPm, culture);
                     }
                     else
                     {
@@ -272,191 +272,131 @@ namespace ExcelNumberFormat
             return StringBuilderCache.GetStringAndRelease(result);
         }
 
-        private static string FormatDate(ExcelDateTime date, List<string> tokens, CultureInfo culture)
+        private static string FormatDate(ExcelDateTime date, DateToken[] tokens, bool containsAmPm, CultureInfo culture)
         {
-            var containsAmPm = ContainsAmPm(tokens);
-
             var result = StringBuilderCache.Acquire();
-            for (var i = 0; i < tokens.Count; i++)
+            for (var i = 0; i < tokens.Length; i++)
             {
                 var token = tokens[i];
 
-                if (token.StartsWith("y", StringComparison.OrdinalIgnoreCase))
+                switch (token.Kind)
                 {
-                    // year
-                    var digits = token.Length;
-                    if (digits < 2)
-                        digits = 2;
-                    if (digits == 3)
-                        digits = 4;
+                    case DateTokenKind.Year:
+                        AppendPadded(result, token.Digits == 2 ? date.Year % 100 : date.Year, token.Digits);
+                        break;
 
-                    var year = date.Year;
-                    if (digits == 2)
-                        year = year % 100;
+                    case DateTokenKind.Minute:
+                        AppendPadded(result, date.Minute, token.Digits);
+                        break;
 
-                    result.Append(year.ToString("D" + digits));
-                }
-                else if (token.StartsWith("m", StringComparison.OrdinalIgnoreCase))
-                {
-                    // If  "m" or "mm" code is used immediately after the "h" or "hh" code (for hours) or immediately before 
-                    // the "ss" code (for seconds), the application shall display minutes instead of the month. 
-                    if (LookBackDatePart(tokens, i - 1, "h") || LookAheadDatePart(tokens, i + 1, "s"))
-                    {
-                        var digits = token.Length;
-                        result.Append(date.Minute.ToString("D" + digits));
-                    }
-                    else
-                    {
-                        var digits = token.Length;
-                        if (digits == 3)
+                    case DateTokenKind.Month:
+                        if (token.Digits == 3)
                         {
                             result.Append(culture.DateTimeFormat.AbbreviatedMonthNames[date.Month - 1]);
                         }
-                        else if (digits == 4)
+                        else if (token.Digits == 4)
                         {
                             result.Append(culture.DateTimeFormat.MonthNames[date.Month - 1]);
                         }
-                        else if (digits == 5)
+                        else if (token.Digits == 5)
                         {
                             result.Append(culture.DateTimeFormat.MonthNames[date.Month - 1][0]);
                         }
                         else
                         {
-                            result.Append(date.Month.ToString("D" + digits));
+                            AppendPadded(result, date.Month, token.Digits);
                         }
-                    }
-                }
-                else if (token.StartsWith("d", StringComparison.OrdinalIgnoreCase))
-                {
-                    var digits = token.Length;
-                    if (digits == 3)
-                    {
-                        // Sun-Sat
-                        result.Append(culture.DateTimeFormat.AbbreviatedDayNames[(int)date.DayOfWeek]);
-                    }
-                    else if (digits == 4)
-                    {
-                        // Sunday-Saturday
-                        result.Append(culture.DateTimeFormat.DayNames[(int)date.DayOfWeek]);
-                    }
-                    else
-                    {
-                        result.Append(date.Day.ToString("D" + digits));
-                    }
-                }
-                else if (token.StartsWith("h", StringComparison.OrdinalIgnoreCase))
-                {
-                    var digits = token.Length;
-                    if (containsAmPm)
-                        result.Append(((date.Hour + 11) % 12 + 1).ToString("D" + digits));
-                    else
-                        result.Append(date.Hour.ToString("D" + digits));
-                }
-                else if (token.StartsWith("s", StringComparison.OrdinalIgnoreCase))
-                {
-                    var digits = token.Length;
-                    result.Append(date.Second.ToString("D" + digits));
-                }
-                else if (token.StartsWith("g", StringComparison.OrdinalIgnoreCase))
-                {
-                    var era = culture.DateTimeFormat.Calendar.GetEra(date.AdjustedDateTime);
-                    var digits = token.Length;
-                    if (digits < 3)
-                    {
-                        result.Append(culture.DateTimeFormat.GetAbbreviatedEraName(era));
-                    }
-                    else
-                    {
-                        result.Append(culture.DateTimeFormat.GetEraName(era));
-                    }
-                }
-                else if (string.Compare(token, "am/pm", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    var ampm = date.ToString("tt", CultureInfo.InvariantCulture);
-                    result.Append(ampm.ToUpperInvariant());
-                }
-                else if (string.Compare(token, "a/p", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    var ampm = date.ToString("%t", CultureInfo.InvariantCulture);
-                    if (char.IsUpper(token[0]))
-                    {
-                        result.Append(ampm.ToUpperInvariant());
-                    }
-                    else
-                    {
-                        result.Append(ampm.ToLowerInvariant());
-                    }
-                }
-                else if (Token.IsSubSecond(token))
-                {
-                    result.Append(FormatSubSeconds(date.Millisecond, token.Length - 1));
-                }
-                else if (token == "/")
-                {
-                    result.Append(culture.DateTimeFormat.DateSeparator);
-                }
-                else if (token == ",")
-                {
-                    while (i < tokens.Count - 1 && tokens[i + 1] == ",")
-                    {
-                        i++;
-                    }
 
-                    result.Append(",");
-                }
-                else
-                {
-                    FormatLiteral(token, result);
+                        break;
+
+                    case DateTokenKind.Day:
+                        if (token.Digits == 3)
+                        {
+                            // Sun-Sat
+                            result.Append(culture.DateTimeFormat.AbbreviatedDayNames[(int)date.DayOfWeek]);
+                        }
+                        else if (token.Digits == 4)
+                        {
+                            // Sunday-Saturday
+                            result.Append(culture.DateTimeFormat.DayNames[(int)date.DayOfWeek]);
+                        }
+                        else
+                        {
+                            AppendPadded(result, date.Day, token.Digits);
+                        }
+
+                        break;
+
+                    case DateTokenKind.Hour:
+                        AppendPadded(result, containsAmPm ? (date.Hour + 11) % 12 + 1 : date.Hour, token.Digits);
+                        break;
+
+                    case DateTokenKind.Second:
+                        AppendPadded(result, date.Second, token.Digits);
+                        break;
+
+                    case DateTokenKind.Era:
+                        var era = culture.DateTimeFormat.Calendar.GetEra(date.AdjustedDateTime);
+                        if (token.Digits < 3)
+                        {
+                            result.Append(culture.DateTimeFormat.GetAbbreviatedEraName(era));
+                        }
+                        else
+                        {
+                            result.Append(culture.DateTimeFormat.GetEraName(era));
+                        }
+
+                        break;
+
+                    case DateTokenKind.AmPm:
+                        result.Append(date.Hour < 12 ? "AM" : "PM");
+                        break;
+
+                    case DateTokenKind.AmPmShort:
+                        if (token.IsUpper)
+                            result.Append(date.Hour < 12 ? 'A' : 'P');
+                        else
+                            result.Append(date.Hour < 12 ? 'a' : 'p');
+
+                        break;
+
+                    case DateTokenKind.SubSecond:
+                        result.Append(FormatSubSeconds(date.Millisecond, token.Digits));
+                        break;
+
+                    case DateTokenKind.DateSeparator:
+                        result.Append(culture.DateTimeFormat.DateSeparator);
+                        break;
+
+                    case DateTokenKind.Comma:
+                        result.Append(',');
+                        break;
+
+                    default:
+                        result.Append(token.Text);
+                        break;
                 }
             }
 
             return StringBuilderCache.GetStringAndRelease(result);
         }
 
-        private static bool LookAheadDatePart(List<string> tokens, int fromIndex, string startsWith)
+        private static readonly int[] PowersOfTen = { 1, 10, 100, 1000, 10000 };
+
+        /// <summary>
+        /// Appends a number left-padded with zeros to at least the given number of digits, like ToString("D" + digits) does.
+        /// </summary>
+        private static void AppendPadded(StringBuilder result, int value, int digits)
         {
-            for (var i = fromIndex; i < tokens.Count; i++)
+            if (value >= 0 && digits < PowersOfTen.Length && value < PowersOfTen[digits])
             {
-                var token = tokens[i];
-                if (token.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase))
-                    return true;
-                if (Token.IsDatePart(token))
-                    return false;
+                for (var place = digits - 1; place >= 0; place--)
+                    result.Append((char)('0' + value / PowersOfTen[place] % 10));
+
+                return;
             }
 
-            return false;
-        }
-
-        private static bool LookBackDatePart(List<string> tokens, int fromIndex, string startsWith)
-        {
-            for (var i = fromIndex; i >= 0; i--)
-            {
-                var token = tokens[i];
-                if (token.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase))
-                    return true;
-                if (Token.IsDatePart(token))
-                    return false;
-            }
-
-            return false;
-        }
-
-        private static bool ContainsAmPm(List<string> tokens)
-        {
-            foreach (var token in tokens)
-            {
-                if (string.Compare(token, "am/pm", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    return true;
-                }
-
-                if (string.Compare(token, "a/p", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            result.Append(value.ToString("D" + digits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture));
         }
 
         static string FormatNumber(double value, DecimalSection format, CultureInfo culture)
@@ -946,29 +886,36 @@ namespace ExcelNumberFormat
 
         static void FormatLiteral(string token, StringBuilder result)
         {
-            string literal = string.Empty;
+            result.Append(GetLiteral(token));
+        }
+
+        /// <summary>
+        /// The text a literal token prints: commas are skipped, quotes and escapes are removed.
+        /// </summary>
+        internal static string GetLiteral(string token)
+        {
             if (token == ",")
             {
-                ; // skip commas
+                return string.Empty; // skip commas
             }
-            else if (token.Length == 2 && (token[0] == '*' || token[0] == '\\'))
+
+            if (token.Length == 2 && (token[0] == '*' || token[0] == '\\'))
             {
                 // TODO: * = repeat to fill cell
-                literal = token[1].ToString();
+                return token[1].ToString();
             }
-            else if (token.Length == 2 && token[0] == '_')
+
+            if (token.Length == 2 && token[0] == '_')
             {
-                literal = " ";
+                return " ";
             }
-            else if (token.StartsWith("\""))
+
+            if (token.Length > 0 && token[0] == '"')
             {
-                literal = token.Substring(1, token.Length - 2);
+                return token.Substring(1, token.Length - 2);
             }
-            else
-            {
-                literal = token;
-            }
-            result.Append(literal);
+
+            return token;
         }
     }
 }

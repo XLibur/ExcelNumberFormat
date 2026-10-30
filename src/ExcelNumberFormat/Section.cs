@@ -24,5 +24,15 @@ namespace ExcelNumberFormat
         public int Lcid { get; set; }
 
         public List<string> GeneralTextDateDurationParts { get; set; }
+
+        /// <summary>
+        /// The classified tokens of a date section.
+        /// </summary>
+        public DateToken[] DateTokens { get; set; }
+
+        /// <summary>
+        /// Whether a date section uses a 12 hour clock.
+        /// </summary>
+        public bool DateContainsAmPm { get; set; }
     }
 }
