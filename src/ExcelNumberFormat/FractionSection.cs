@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Text;
 
-namespace ExcelNumberFormat
+namespace Xlibur.ExcelNumberFormat
 {
     internal class FractionSection
     {

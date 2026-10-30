@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 // Copyright (C) 2013-present  SheetJS. 
 // Licensed under the Apache License, Version 2.0
 
-namespace ExcelNumberFormat.Tests
+namespace Xlibur.ExcelNumberFormat.Tests
 {
     public class Class1
     {

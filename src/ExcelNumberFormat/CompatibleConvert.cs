@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace ExcelNumberFormat
+namespace Xlibur.ExcelNumberFormat
 {
     internal static class CompatibleConvert
     {

@@ -7,12 +7,12 @@ ExcelNumberFormat
 
 ## Install via NuGet
 
-If you want to include ExcelNumberFormat in your project, you can [install it directly from NuGet](https://www.nuget.org/packages/ExcelNumberFormat)
+If you want to include ExcelNumberFormat in your project, you can [install it directly from NuGet](https://www.nuget.org/packages/Xlibur.ExcelNumberFormat)
 
 To install ExcelNumberFormat, run the following command in the Package Manager Console
 
 ```
-PM> Install-Package ExcelNumberFormat
+PM> Install-Package Xlibur.ExcelNumberFormat
 ```
 
 ## Usage

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace ExcelNumberFormat
+namespace Xlibur.ExcelNumberFormat
 {
     internal class Tokenizer
     {

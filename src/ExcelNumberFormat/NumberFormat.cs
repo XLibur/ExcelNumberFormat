@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace ExcelNumberFormat
+namespace Xlibur.ExcelNumberFormat
 {
     /// <summary>
     /// Parse ECMA-376 number format strings and format values like Excel and other spreadsheet softwares.

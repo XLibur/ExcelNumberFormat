@@ -1,4 +1,4 @@
-﻿namespace ExcelNumberFormat
+﻿namespace Xlibur.ExcelNumberFormat
 {
     internal class Condition
     {
