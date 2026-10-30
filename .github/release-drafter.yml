@@ -6,10 +6,9 @@ tag-template: 'v$RESOLVED_VERSION'
 # increment wins, and the trailing `type: version-resolver` entry with no `when`
 # is the fallback for anything uncategorised.
 #
-# While the project is pre-1.0, a breaking change is still a minor bump.
 categories:
   - title: 'Breaking Changes'
-    semver-increment: 'minor'
+    semver-increment: 'major'
     when:
       labels:
         - 'breaking'

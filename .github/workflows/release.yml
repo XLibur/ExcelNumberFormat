@@ -20,6 +20,10 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -37,6 +41,20 @@ jobs:
 
       # Captured before publishing, because once this release is published it
       # becomes "latest" and can no longer serve as the previous tag.
+      # The tag glob above also matches pre-release tags such as v1.3.0-rc.1. Those go
+      # through the Pre-release workflow, never through a stable release.
+      - name: Check tag is a stable version on main
+        run: |
+          if ! printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$TAG is not a stable vMAJOR.MINOR.PATCH tag. Pre-releases go through the Pre-release workflow."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$TAG is not on main — refusing to release"
+            exit 1
+          fi
+
       - name: Resolve previous release tag
         id: previous
         run: |
@@ -51,7 +69,8 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
-            11.0.100-rc.2.26504.105
+            11.0.x
+          dotnet-quality: preview
 
       - name: Build
         run: dotnet build ExcelNumberFormat.slnx --configuration Release
@@ -107,8 +126,10 @@ jobs:
       # Release Drafter has no first-time-contributor detection, so borrow
       # GitHub's own and append its "New Contributors" section to the notes.
       - name: Append new contributors
+        env:
+          PREV: ${{ steps.previous.outputs.tag }}
         run: |
-          prev='${{ steps.previous.outputs.tag }}'
+          prev="$PREV"
           if [ -n "$prev" ]; then
             generated=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
               -f tag_name="$TAG" -f previous_tag_name="$prev" --jq .body)

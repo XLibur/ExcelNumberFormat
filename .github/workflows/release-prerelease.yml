@@ -22,6 +22,10 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: prerelease
+  cancel-in-progress: false
+
 jobs:
   prerelease:
     runs-on: ubuntu-latest
@@ -41,12 +45,16 @@ jobs:
           dotnet-version: |
             8.0.x
             10.0.x
-            11.0.100-rc.2.26504.105
+            11.0.x
+          dotnet-quality: preview
 
       - name: Show inputs
+        env:
+          BRANCH: ${{ github.ref_name }}
+          LABEL: ${{ inputs.prerelease-label }}
         run: |
-          echo "Branch: ${{ github.ref_name }}"
-          echo "Pre-release label: ${{ inputs.prerelease-label }}"
+          echo "Branch: $BRANCH"
+          echo "Pre-release label: $LABEL"
 
       - name: Build
         run: dotnet build ExcelNumberFormat.slnx --configuration Release
@@ -62,6 +70,20 @@ jobs:
 
       - name: Show package version
         run: ls -la ./artifacts/
+
+      # On a commit that sits exactly on a stable tag MinVer yields a stable version, and a
+      # stable version must only be published by Publish Release.
+      - name: Verify the package is a pre-release
+        run: |
+          status=0
+          for package in ./artifacts/*.nupkg; do
+            name=$(basename "$package" .nupkg)
+            if ! printf '%s' "$name" | grep -qE '\.[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$'; then
+              echo "::error::$name is not a pre-release version — use Publish Release for stable versions"
+              status=1
+            fi
+          done
+          exit $status
 
       - name: NuGet login
         if: ${{ inputs.dry-run == false }}
