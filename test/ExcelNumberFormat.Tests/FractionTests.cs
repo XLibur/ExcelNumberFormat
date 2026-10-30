@@ -192,8 +192,23 @@ namespace ExcelNumberFormat.Tests
         [Test]
         public async Task TestFractionLargeValues()
         {
-            // Excel shows ######## here; the whole part must not wrap around like a 32-bit int
+            // The whole part must not wrap around or overflow like a 32-bit int
             await Test(3e9, "# ?/?", "3000000000    ");
+        }
+
+        [Test]
+        public async Task TestFractionAroundInt32MaxValue()
+        {
+            // https://github.com/andersnm/ExcelNumberFormat/pull/32
+            // The expected values were produced by Excel 16 with the same format strings.
+            await Test((double)int.MaxValue, "# ?/?", "2147483647    ");
+            await Test((double)int.MaxValue + 1, "# ?/?", "2147483648    ");
+            await Test(2147483647.5, "# ?/?", "2147483647 1/2");
+            await Test(4294967296.75, "# ?/?", "4294967296 3/4");
+            await Test(123456789012.3333333, "# ?/?", "123456789012 1/3");
+            await Test(-2147483648.0, "# ?/?", "-2147483648    ");
+            await Test(-2147483649.5, "# ?/?", "-2147483649 1/2");
+            await Test(1e15, "# ?/?", "1000000000000000    ");
         }
     }
 }
