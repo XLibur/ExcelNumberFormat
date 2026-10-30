@@ -503,6 +503,34 @@ namespace Xlibur.ExcelNumberFormat.Tests
         }
 
         [Test]
+        public async Task TestRoundHalfAwayFromZero()
+        {
+            await Test(2.5, "0", "3");
+            await Test(3.5, "0", "4");
+            await Test(-2.5, "0", "-3");
+            await Test(1234.5, "#,##0", "1,235");
+            await Test(0.125, "0.00", "0.13");
+            await Test(2.675, "0.00", "2.68");
+            await Test(0.125, "0.0%", "12.5%");
+            await Test(0.0125, "0.0%", "1.3%");
+            await Test(1.5, "0", "2");
+            await Test(0.4, "0", "0");
+        }
+
+        [Test]
+        public async Task TestTextSectionLiterals()
+        {
+            await Test("abc", "\"Prefix: \"@", "Prefix: abc");
+            await Test("abc", "\"x\"@\"y\"", "xabcy");
+            await Test("abc", "0;-0;0;\"Note: \"@", "Note: abc");
+            await Test("abc", "0;\"Text: \"@", "Text: abc");
+            await Test("abc", "0;-0;\"Text: \"@", "Text: abc");
+            await Test("abc", "@", "abc");
+            await Test("abc", "0;-0;0", "abc");
+            await Test("abc", "0.00", "abc");
+        }
+
+        [Test]
         public async Task TestThousandSeparator()
         {
             var actual = Format(1469.07, "0,000,000.00", CultureInfo.InvariantCulture);
