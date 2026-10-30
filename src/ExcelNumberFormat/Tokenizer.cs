@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 
 namespace ExcelNumberFormat
 {
@@ -25,7 +26,7 @@ namespace ExcelNumberFormat
         {
             var tokens = new string[128];
             for (var i = 0; i < tokens.Length; i++)
-                tokens[i] = ((char)i).ToString();
+                tokens[i] = string.Intern(((char)i).ToString());
 
             return tokens;
         }
@@ -97,6 +98,18 @@ namespace ExcelNumberFormat
                 Advance();
 
             return true;
+        }
+
+        public bool ReadOneOf(SearchValues<char> values)
+        {
+            var c = Peek();
+            if (c >= 0 && values.Contains((char)c))
+            {
+                Advance();
+                return true;
+            }
+
+            return false;
         }
 
         public bool ReadOneOf(string s)

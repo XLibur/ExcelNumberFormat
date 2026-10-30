@@ -489,6 +489,38 @@ namespace ExcelNumberFormat.Tests
         }
 
         [Test]
+        public async Task TestGetOrCreateReusesFormats()
+        {
+            var first = NumberFormat.GetOrCreate("#,##0.00");
+            var second = NumberFormat.GetOrCreate("#,##0.00");
+            var other = NumberFormat.GetOrCreate("0.0%");
+
+            await Assert.That(second).IsSameReferenceAs(first);
+            await Assert.That(other).IsNotSameReferenceAs(first);
+            await Assert.That(first.FormatString).IsEqualTo("#,##0.00");
+            await Assert.That(first.Format(1234.5, CultureInfo.InvariantCulture)).IsEqualTo("1,234.50");
+            await Assert.That(other.Format(0.256, CultureInfo.InvariantCulture)).IsEqualTo("25.6%");
+        }
+
+        [Test]
+        public async Task TestGetOrCreateIsBounded()
+        {
+            // More distinct formats than the cache holds: every one still formats correctly
+            for (var i = 0; i < 600; i++)
+            {
+                var format = NumberFormat.GetOrCreate("0\"#" + i + "\"");
+                await Assert.That(format.Format(7, CultureInfo.InvariantCulture)).IsEqualTo("7#" + i);
+            }
+        }
+
+        [Test]
+        public async Task TestGetOrCreateInvalidAndNull()
+        {
+            await Assert.That(NumberFormat.GetOrCreate("[<]0").IsValid).IsFalse();
+            await Assert.That(NumberFormat.GetOrCreate(null)).IsNotNull();
+        }
+
+        [Test]
         public async Task TestEmptySections()
         {
             // Expected values were checked against Excel 16

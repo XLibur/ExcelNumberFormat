@@ -88,15 +88,6 @@ namespace ExcelNumberFormat
         }
 
         /// <summary>
-        /// Prints the fractional seconds with exactly as many digits as the format asks for.
-        /// The value is expected to be rounded already by RoundSubSeconds.
-        /// </summary>
-        static string FormatSubSeconds(int milliseconds, int digits)
-        {
-            return "." + milliseconds.ToString("D3", CultureInfo.InvariantCulture).Substring(0, Math.Min(digits, 3)).PadRight(digits, '0');
-        }
-
-        /// <summary>
         /// Rounds a date, time or duration to the displayed number of fractional second digits (half up, like Excel),
         /// so that a carry ripples into the seconds, minutes and hours.
         /// </summary>
@@ -229,7 +220,7 @@ namespace ExcelNumberFormat
                 {
                     var value = timeSpan.Minutes;
                     var digits = token.Length;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                 }
                 else if (token.StartsWith("s", StringComparison.OrdinalIgnoreCase))
                 {
@@ -237,31 +228,31 @@ namespace ExcelNumberFormat
                     var formatMs = containsMilliseconds ? 0 : timeSpan.Milliseconds / 1000D;
                     var value = (int)Math.Round(timeSpan.Seconds + formatMs, 0, MidpointRounding.AwayFromZero);
                     var digits = token.Length;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                 }
                 else if (token.StartsWith("[h", StringComparison.OrdinalIgnoreCase))
                 {
                     var value = (long)timeSpan.TotalHours;
                     var digits = token.Length - 2;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                     timeSpan = new TimeSpan(0, 0, Math.Abs(timeSpan.Minutes), Math.Abs(timeSpan.Seconds), Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (token.StartsWith("[m", StringComparison.OrdinalIgnoreCase))
                 {
                     var value = (long)timeSpan.TotalMinutes;
                     var digits = token.Length - 2;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                     timeSpan = new TimeSpan(0, 0, 0, Math.Abs(timeSpan.Seconds), Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (token.StartsWith("[s", StringComparison.OrdinalIgnoreCase))
                 {
                     var value = (long)timeSpan.TotalSeconds;
                     var digits = token.Length - 2;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                     timeSpan = new TimeSpan(0, 0, 0, 0, Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (Token.IsSubSecond(token)) {
-                    result.Append(FormatSubSeconds(timeSpan.Milliseconds, token.Length - 1));
+                    AppendSubSeconds(result, timeSpan.Milliseconds, token.Length - 1);
                 }
                 else
                 {
@@ -361,7 +352,7 @@ namespace ExcelNumberFormat
                         break;
 
                     case DateTokenKind.SubSecond:
-                        result.Append(FormatSubSeconds(date.Millisecond, token.Digits));
+                        AppendSubSeconds(result, date.Millisecond, token.Digits);
                         break;
 
                     case DateTokenKind.DateSeparator:
@@ -381,12 +372,14 @@ namespace ExcelNumberFormat
             return StringBuilderCache.GetStringAndRelease(result);
         }
 
-        private static readonly int[] PowersOfTen = { 1, 10, 100, 1000, 10000 };
+        private static readonly long[] PowersOfTen = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
+
+        private static readonly string[] PaddedFormats = { "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9" };
 
         /// <summary>
         /// Appends a number left-padded with zeros to at least the given number of digits, like ToString("D" + digits) does.
         /// </summary>
-        private static void AppendPadded(StringBuilder result, int value, int digits)
+        private static void AppendPadded(StringBuilder result, long value, int digits)
         {
             if (value >= 0 && digits < PowersOfTen.Length && value < PowersOfTen[digits])
             {
@@ -396,7 +389,28 @@ namespace ExcelNumberFormat
                 return;
             }
 
-            result.Append(value.ToString("D" + digits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture));
+            result.Append(value.ToString(digits < PaddedFormats.Length ? PaddedFormats[digits] : "D" + digits.ToString(CultureInfo.InvariantCulture)));
+        }
+
+        /// <summary>
+        /// Appends the fractional seconds with exactly as many digits as the format asks for.
+        /// The value is expected to be rounded already by RoundSubSeconds.
+        /// </summary>
+        static void AppendSubSeconds(StringBuilder result, int milliseconds, int digits)
+        {
+            if (milliseconds < 0 || milliseconds > 999)
+            {
+                result.Append("." + milliseconds.ToString("D3", CultureInfo.InvariantCulture).Substring(0, Math.Min(digits, 3)).PadRight(digits, '0'));
+                return;
+            }
+
+            result.Append('.');
+            for (var i = 0; i < digits; i++)
+            {
+                result.Append(i == 0 ? (char)('0' + milliseconds / 100) :
+                              i == 1 ? (char)('0' + milliseconds / 10 % 10) :
+                              i == 2 ? (char)('0' + milliseconds % 10) : '0');
+            }
         }
 
         static string FormatNumber(double value, DecimalSection format, CultureInfo culture)

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -283,6 +284,10 @@ namespace ExcelNumberFormat
             }
         }
 
+        private static readonly SearchValues<char> SymbolCharacters = SearchValues.Create("#?,!&%+-$€£0123456789{}():;/.@ ");
+
+        private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
+
         private static string ReadToken(Tokenizer reader, out bool syntaxError)
         {
             var offset = reader.Position;
@@ -291,7 +296,7 @@ namespace ExcelNumberFormat
                 reader.ReadEnclosed('[', ']') ||
 
                 // Symbols
-                reader.ReadOneOf("#?,!&%+-$€£0123456789{}():;/.@ ") ||
+                reader.ReadOneOf(SymbolCharacters) ||
                 reader.ReadString("e+", true) ||
                 reader.ReadString("e-", true) ||
                 reader.ReadString("General", true) ||
@@ -379,22 +384,22 @@ namespace ExcelNumberFormat
         {
             // NFPartCondNum = [ASCII-HYPHEN-MINUS] NFPartIntNum [INTL-CHAR-DECIMAL-SEP NFPartIntNum] [NFPartExponential NFPartIntNum]
             tokenizer.ReadString("-");
-            while (tokenizer.ReadOneOf("0123456789"))
+            while (tokenizer.ReadOneOf(Digits))
             {
             }
 
             if (tokenizer.ReadString("."))
             {
-                while (tokenizer.ReadOneOf("0123456789"))
+                while (tokenizer.ReadOneOf(Digits))
                 {
                 }
             }
 
             if (tokenizer.ReadString("e+", true) || tokenizer.ReadString("e-", true))
             {
-                if (tokenizer.ReadOneOf("0123456789"))
+                if (tokenizer.ReadOneOf(Digits))
                 {
-                    while (tokenizer.ReadOneOf("0123456789"))
+                    while (tokenizer.ReadOneOf(Digits))
                     {
                     }
                 }

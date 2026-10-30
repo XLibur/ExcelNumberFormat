@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -30,6 +31,35 @@ namespace ExcelNumberFormat
             {
                 Sections = new List<Section>();
             }
+        }
+
+        private const int MaxCachedFormats = 256;
+
+        private static readonly ConcurrentDictionary<string, NumberFormat> Cache = new ConcurrentDictionary<string, NumberFormat>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// Returns a number format for the format string, parsing it only the first time it is seen.
+        /// </summary>
+        /// <remarks>
+        /// Parsing costs more than formatting a value, so use this when the same format strings come up again and again,
+        /// for example once per cell. A <see cref="NumberFormat"/> is immutable and safe to share between threads.
+        /// At most 256 formats are kept; the cache starts over when it is full, so it cannot grow without bound.
+        /// </remarks>
+        /// <param name="formatString">The number format string.</param>
+        public static NumberFormat GetOrCreate(string formatString)
+        {
+            if (formatString == null)
+                return new NumberFormat(formatString);
+
+            if (Cache.TryGetValue(formatString, out var cached))
+                return cached;
+
+            var format = new NumberFormat(formatString);
+            if (Cache.Count >= MaxCachedFormats)
+                Cache.Clear();
+
+            Cache.TryAdd(formatString, format);
+            return format;
         }
 
         /// <summary>
