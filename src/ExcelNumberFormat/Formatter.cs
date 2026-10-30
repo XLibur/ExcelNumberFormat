@@ -35,6 +35,12 @@ namespace Xlibur.ExcelNumberFormat
                 case SectionType.Date:
                     if (ExcelDateTime.TryConvert(value, isDate1904, culture, out var excelDateTime))
                     {
+                        // System long date/time: the rest of the format is ignored
+                        if (node.Lcid == 0xF800)
+                            return excelDateTime.ToString(culture.DateTimeFormat.LongDatePattern, culture);
+                        if (node.Lcid == 0xF400)
+                            return excelDateTime.ToString(culture.DateTimeFormat.LongTimePattern, culture);
+
                         return FormatDate(excelDateTime, node.GeneralTextDateDurationParts, culture);
                     }
                     else

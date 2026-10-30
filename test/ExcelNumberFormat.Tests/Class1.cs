@@ -476,6 +476,23 @@ namespace Xlibur.ExcelNumberFormat.Tests
         }
 
         [Test]
+        public async Task TestSystemLongDateTime()
+        {
+            var date = 45498.0; // 2024-07-25
+            var dateTime = 45498.5;
+            var fr = new CultureInfo("fr-FR");
+            var us = new CultureInfo("en-US");
+
+            await Assert.That(Format(date, @"[$-F800]dddd\,\ mmmm\ dd\,\ yyyy", fr)).IsEqualTo(new DateTime(2024, 7, 25).ToString(fr.DateTimeFormat.LongDatePattern, fr));
+            await Assert.That(Format(date, @"[$-F800]dddd\,\ mmmm\ dd\,\ yyyy", us)).IsEqualTo("Thursday, July 25, 2024");
+            await Assert.That(Format(dateTime, "[$-F400]h:mm:ss AM/PM", fr)).IsEqualTo(new DateTime(2024, 7, 25, 12, 0, 0).ToString(fr.DateTimeFormat.LongTimePattern, fr));
+            await Assert.That(Format(dateTime, "[$-F400]h:mm:ss AM/PM", us)).IsEqualTo(new DateTime(2024, 7, 25, 12, 0, 0).ToString(us.DateTimeFormat.LongTimePattern, us));
+
+            // Other locale ids still use the tokens that follow
+            await Assert.That(Format(date, "[$-409]yyyy-mm-dd", fr)).IsEqualTo("2024-07-25");
+        }
+
+        [Test]
         public async Task TestThousandSeparator()
         {
             var actual = Format(1469.07, "0,000,000.00", CultureInfo.InvariantCulture);
