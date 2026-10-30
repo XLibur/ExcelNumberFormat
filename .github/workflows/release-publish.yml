@@ -3,8 +3,9 @@ name: Publish Release
 # One-click stable release:
 #
 #   1. resolves the version from the release draft (or the version input)
-#   2. tags main
-#   3. calls release.yml, which tests, packs, publishes to NuGet, and publishes the
+#   2. rolls CHANGELOG.md's Unreleased section into a dated version heading
+#   3. commits that to main and tags it
+#   4. calls release.yml, which tests, packs, publishes to NuGet, and publishes the
 #      draft release notes with contributor attribution
 
 on:
@@ -15,7 +16,7 @@ on:
         required: false
         type: string
       dry-run:
-        description: 'Dry run — resolve the version without tagging or publishing'
+        description: 'Dry run — resolve the version and show the changelog roll without tagging or publishing'
         required: false
         default: true
         type: boolean
@@ -26,7 +27,7 @@ jobs:
   prepare:
     name: Prepare release
     runs-on: ubuntu-latest
-    # Needs write to push the release tag.
+    # Needs write to push the changelog commit and the release tag.
     permissions:
       contents: write
     outputs:
@@ -97,6 +98,14 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Releasing $tag"
 
+      - name: Roll changelog
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: bash .github/scripts/roll-changelog.sh "$VERSION"
+
+      - name: Show changelog diff
+        run: git --no-pager diff -- CHANGELOG.md
+
       - name: Dry run summary
         if: ${{ inputs.dry-run }}
         env:
@@ -105,19 +114,22 @@ jobs:
           {
             echo "### Dry run — nothing was published"
             echo
-            echo "Would release **$TAG**."
+            echo "Would release **$TAG** with the changelog roll shown in the job log."
             echo
             echo "Re-run with **dry-run** unchecked to tag and publish."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Tag
+      - name: Commit and tag
         if: ${{ !inputs.dry-run }}
         env:
           TAG: ${{ steps.resolve.outputs.tag }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add CHANGELOG.md
+          git commit -m "chore: roll changelog for $TAG"
           git tag -a "$TAG" -m "Release $TAG"
+          git push origin HEAD:main
           git push origin "$TAG"
 
   release:
