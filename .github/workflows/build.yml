@@ -1,9 +1,14 @@
 name: Build and test
 
+# A push or pull request that changes only Markdown files does not build. If it also changes anything else, it does.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
   pull_request:
+    paths-ignore:
+      - '**.md'
 
 jobs:
   build:
