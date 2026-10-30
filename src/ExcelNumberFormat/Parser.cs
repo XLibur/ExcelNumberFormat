@@ -36,6 +36,7 @@ namespace Xlibur.ExcelNumberFormat
             bool hasPlaceholders = false;
             Condition condition = null;
             Color color = null;
+            var lcid = 0;
             string token;
             List<string> tokens = new List<string>();
 
@@ -73,7 +74,11 @@ namespace Xlibur.ExcelNumberFormat
                     else if (TryParseColor(expression, out var parseColor))
                         color = parseColor;
                     else if (TryParseCurrencySymbol(expression, out var parseCurrencySymbol))
+                    {
                         tokens.Add("\"" + parseCurrencySymbol + "\"");
+                        if (TryParseLcid(expression, out var parseLcid))
+                            lcid = parseLcid;
+                    }
                 }
                 else
                 {
@@ -153,6 +158,7 @@ namespace Xlibur.ExcelNumberFormat
                 Fraction = fraction,
                 Exponential = exponential,
                 Number = number,
+                Lcid = lcid,
                 GeneralTextDateDurationParts = generalTextDateDuration
             };
         }
@@ -374,6 +380,17 @@ namespace Xlibur.ExcelNumberFormat
             }
 
             color = null;
+            return false;
+        }
+
+        private static bool TryParseLcid(string token, out int lcid)
+        {
+            // [$symbol-HEX]: hexadecimal locale id after the first dash
+            var dash = token.IndexOf('-');
+            if (dash >= 0 && int.TryParse(token.Substring(dash + 1), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out lcid))
+                return true;
+
+            lcid = 0;
             return false;
         }
 
