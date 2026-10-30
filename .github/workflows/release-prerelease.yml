@@ -1,0 +1,79 @@
+name: Pre-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease-label:
+        description: 'Pre-release label (alpha, beta, rc)'
+        required: true
+        default: 'alpha'
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+      dry-run:
+        description: 'Dry run (build, test, pack — skip NuGet publish)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  prerelease:
+    runs-on: ubuntu-latest
+
+    env:
+      MinVerDefaultPreReleaseIdentifiers: ${{ inputs.prerelease-label }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+            11.0.100-rc.2.26504.105
+
+      - name: Show inputs
+        run: |
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Pre-release label: ${{ inputs.prerelease-label }}"
+
+      - name: Build
+        run: dotnet build ExcelNumberFormat.slnx --configuration Release
+
+      - name: Test
+        run: |
+          for framework in net8.0 net10.0 net11.0; do
+            dotnet run --project test/ExcelNumberFormat.Tests --configuration Release --framework $framework --no-build
+          done
+
+      - name: Pack
+        run: dotnet pack src/ExcelNumberFormat/ExcelNumberFormat.csproj --configuration Release --no-build --output ./artifacts
+
+      - name: Show package version
+        run: ls -la ./artifacts/
+
+      - name: NuGet login
+        if: ${{ inputs.dry-run == false }}
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        id: nuget-login
+        with:
+          user: jafin
+
+      - name: Push to NuGet
+        if: ${{ inputs.dry-run == false }}
+        run: dotnet nuget push ./artifacts/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --skip-duplicate
+
+      - name: Dry run — skipped NuGet publish
+        if: ${{ inputs.dry-run == true }}
+        run: echo "Dry run enabled — the package was built but not published to NuGet."

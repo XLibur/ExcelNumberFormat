@@ -5,7 +5,8 @@
     <AssemblyName>Xlibur.ExcelNumberFormat</AssemblyName>
     <RootNamespace>Xlibur.ExcelNumberFormat</RootNamespace>
     <PackageId>Xlibur.ExcelNumberFormat</PackageId>
-    <VersionPrefix>1.1.0</VersionPrefix>
+    <!-- MinVer derives the version from git tags, e.g. v1.2.0 -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Description>.NET library to parse ECMA-376 number format strings and format values like Excel and other spreadsheet softwares.</Description>
@@ -18,6 +19,10 @@
     <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MinVer" Version="8.0.0" PrivateAssets="All" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\"/>
