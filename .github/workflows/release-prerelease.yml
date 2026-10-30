@@ -1,5 +1,12 @@
 name: Pre-release
 
+# Publishes an alpha, beta or rc build to NuGet from any branch.
+#
+# This only calls release.yml. NuGet trusted publishing is bound to the workflow file named in
+# the policy (release.yml), and a token requested from here would be rejected as coming from
+# release-prerelease.yml. release.yml builds, tests, packs, checks the version is a pre-release
+# and pushes; with a pre-release label it skips the tag checks and the GitHub Release.
+
 on:
   workflow_dispatch:
     inputs:
@@ -18,9 +25,7 @@ on:
         default: false
         type: boolean
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 concurrency:
   group: prerelease
@@ -28,74 +33,14 @@ concurrency:
 
 jobs:
   prerelease:
-    runs-on: ubuntu-latest
-
-    env:
-      MinVerDefaultPreReleaseIdentifiers: ${{ inputs.prerelease-label }}
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: |
-            8.0.x
-            10.0.x
-            11.0.x
-          dotnet-quality: preview
-
-      - name: Show inputs
-        env:
-          BRANCH: ${{ github.ref_name }}
-          LABEL: ${{ inputs.prerelease-label }}
-        run: |
-          echo "Branch: $BRANCH"
-          echo "Pre-release label: $LABEL"
-
-      - name: Build
-        run: dotnet build ExcelNumberFormat.slnx --configuration Release
-
-      - name: Test
-        run: |
-          for framework in net8.0 net10.0 net11.0; do
-            dotnet run --project test/ExcelNumberFormat.Tests --configuration Release --framework $framework --no-build
-          done
-
-      - name: Pack
-        run: dotnet pack src/ExcelNumberFormat/ExcelNumberFormat.csproj --configuration Release --no-build --output ./artifacts
-
-      - name: Show package version
-        run: ls -la ./artifacts/
-
-      # On a commit that sits exactly on a stable tag MinVer yields a stable version, and a
-      # stable version must only be published by Publish Release.
-      - name: Verify the package is a pre-release
-        run: |
-          status=0
-          for package in ./artifacts/*.nupkg; do
-            name=$(basename "$package" .nupkg)
-            if ! printf '%s' "$name" | grep -qE '\.[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$'; then
-              echo "::error::$name is not a pre-release version — use Publish Release for stable versions"
-              status=1
-            fi
-          done
-          exit $status
-
-      - name: NuGet login
-        if: ${{ inputs.dry-run == false }}
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
-        id: nuget-login
-        with:
-          user: jafin
-
-      - name: Push to NuGet
-        if: ${{ inputs.dry-run == false }}
-        run: dotnet nuget push ./artifacts/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --skip-duplicate
-
-      - name: Dry run — skipped NuGet publish
-        if: ${{ inputs.dry-run == true }}
-        run: echo "Dry run enabled — the package was built but not published to NuGet."
+    name: Pre-release
+    uses: ./.github/workflows/release.yml
+    with:
+      prerelease-label: ${{ inputs.prerelease-label }}
+      dry-run: ${{ inputs.dry-run }}
+    # release.yml declares contents: write and id-token: write, and a caller has to grant at
+    # least that. The steps that write to the repository are skipped in a pre-release.
+    permissions:
+      contents: write
+      id-token: write
+    secrets: inherit

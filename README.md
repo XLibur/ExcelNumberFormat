@@ -5,6 +5,8 @@ ExcelNumberFormat
 
 [![Build and test](https://github.com/XLibur/ExcelNumberFormat/actions/workflows/build.yml/badge.svg)](https://github.com/XLibur/ExcelNumberFormat/actions/workflows/build.yml)
 
+> This library is a fork of [andersnm/ExcelNumberFormat](https://github.com/andersnm/ExcelNumberFormat). It is published to NuGet as `Xlibur.ExcelNumberFormat`; the namespace is unchanged.
+
 ## Install via NuGet
 
 If you want to include ExcelNumberFormat in your project, you can [install it directly from NuGet](https://www.nuget.org/packages/Xlibur.ExcelNumberFormat)
