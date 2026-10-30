@@ -1,5 +1,5 @@
 ﻿using System;
-using Xlibur.ExcelNumberFormat;
+using ExcelNumberFormat;
 using System.Globalization;
 
 namespace Example

@@ -3,7 +3,7 @@
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
     <AssemblyName>Xlibur.ExcelNumberFormat</AssemblyName>
-    <RootNamespace>Xlibur.ExcelNumberFormat</RootNamespace>
+    <RootNamespace>ExcelNumberFormat</RootNamespace>
     <PackageId>Xlibur.ExcelNumberFormat</PackageId>
     <!-- MinVer derives the version from git tags, e.g. v1.2.0 -->
     <MinVerTagPrefix>v</MinVerTagPrefix>

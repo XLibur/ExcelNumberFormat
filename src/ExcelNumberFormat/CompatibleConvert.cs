@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Globalization;
 
-namespace Xlibur.ExcelNumberFormat
+namespace ExcelNumberFormat
 {
     internal static class CompatibleConvert
     {

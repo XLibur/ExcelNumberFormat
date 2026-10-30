@@ -2,7 +2,7 @@
 using System.Globalization;
 using System.Threading.Tasks;
 
-namespace Xlibur.ExcelNumberFormat.Tests
+namespace ExcelNumberFormat.Tests
 {
     internal static class FormatHelper
     {

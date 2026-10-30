@@ -8,7 +8,7 @@
 
 ### 💥 Breaking Changes
 
-- **The package, assembly and namespace are renamed to `Xlibur.ExcelNumberFormat`.** Change the package reference and `using ExcelNumberFormat;` to `using Xlibur.ExcelNumberFormat;`.
+- **The package and assembly are renamed to `Xlibur.ExcelNumberFormat`.** Replace the `ExcelNumberFormat` package reference with `Xlibur.ExcelNumberFormat`. The namespace stays `ExcelNumberFormat`, so no code changes are needed.
 - **The library targets `net8.0`, `net10.0` and `net11.0`.** `net20`, `netstandard1.0` and `netstandard2.0` are no longer built.
 
 ### ✨ New Features

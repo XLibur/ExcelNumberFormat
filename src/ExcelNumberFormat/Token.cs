@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Xlibur.ExcelNumberFormat
+namespace ExcelNumberFormat
 {
     internal static class Token
     {

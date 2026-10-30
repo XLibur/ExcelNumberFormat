@@ -1,4 +1,4 @@
-﻿namespace Xlibur.ExcelNumberFormat
+﻿namespace ExcelNumberFormat
 {
     internal enum SectionType
     {
