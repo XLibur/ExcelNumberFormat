@@ -315,7 +315,8 @@ namespace ExcelNumberFormat
                 reader.ReadOneOrMore('s') ||
                 reader.ReadOneOrMore('S') ||
                 reader.ReadOneOrMore('g') ||
-                reader.ReadOneOrMore('G'))
+                reader.ReadOneOrMore('G') ||
+                reader.ReadOneOrMore('e'))
             {
                 syntaxError = false;
                 var length = reader.Position - offset;

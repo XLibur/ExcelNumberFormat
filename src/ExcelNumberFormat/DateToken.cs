@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace ExcelNumberFormat
@@ -12,6 +12,7 @@ namespace ExcelNumberFormat
         Hour,
         Second,
         Era,
+        EraYear,
         AmPm,
         AmPmShort,
         SubSecond,
@@ -59,7 +60,15 @@ namespace ExcelNumberFormat
         {
             containsAmPm = ContainsAmPm(tokens);
 
-            var result = new DateToken[tokens.Count];
+            // An "e-" or "e+" token turns into two date tokens
+            var size = tokens.Count;
+            for (var i = 0; i < tokens.Count; i++)
+            {
+                if (tokens[i] == "e-" || tokens[i] == "e+")
+                    size++;
+            }
+
+            var result = new DateToken[size];
             var count = 0;
             for (var i = 0; i < tokens.Count; i++)
             {
@@ -95,6 +104,13 @@ namespace ExcelNumberFormat
 
                     case 'g':
                         result[count++] = (new DateToken(DateTokenKind.Era, token.Length));
+                        continue;
+
+                    case 'e' when token[0] == 'e':
+                        // The tokenizer reads "e-" and "e+" as exponents, but in a date they are an era year and a literal
+                        result[count++] = (new DateToken(DateTokenKind.EraYear, token.Length == 1 || Token.IsExponent(token) ? 1 : 2));
+                        if (Token.IsExponent(token))
+                            result[count++] = (new DateToken(DateTokenKind.Literal, text: token.Substring(1)));
                         continue;
                 }
 

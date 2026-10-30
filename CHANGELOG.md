@@ -10,6 +10,7 @@
 
 ### 🐛 Bug Fixes
 
+- **The `e` date code and Japanese eras are supported.** A format with `e`, such as `[$-411]ggge"年"m"月"d"日"` or `[$-411]ge.m.d`, was invalid, so the value came back unformatted. With the Japanese locale `[$-411]`, `g`, `gg` and `ggg` print the era as `R`, `令` and `令和`, and `e` and `ee` print the year of the era, as Excel does. In all other locales `e` and `ee` print the four digit year ([andersnm/ExcelNumberFormat#39](https://github.com/andersnm/ExcelNumberFormat/issues/39)).
 - **`AM/PM` and `A/P` use the locale's designators.** They always printed `AM`, `PM`, `A` and `P`. Now the locale in a `[$-XXX]` code, or the culture if there is none, supplies them, so `[$-405]h:mm AM/PM` prints `dop.` and `odp.`, as Excel does. Without a locale code `A/P` still prints a single letter. With one it prints the full designator, as Excel does ([andersnm/ExcelNumberFormat#45](https://github.com/andersnm/ExcelNumberFormat/issues/45)).
 
 ## v1.2.1 - 2026-10-30
