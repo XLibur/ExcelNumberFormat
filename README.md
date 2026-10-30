@@ -29,7 +29,7 @@ Console.WriteLine(format.Format(1234.56, CultureInfo.InvariantCulture));
 - Formats values with relevant constants from CultureInfo.
 - Supports DateTime, TimeSpan and numeric values for date and duration formats.
 - Supports both 1900- and 1904-based numeric datetimes (Excel on Mac uses 1904-based dates).
-- Targets net20 and netstandard1.0 for max compatibility.
+- Targets net8.0, net10.0 and net11.0.
 
 ## Formatting .NET types
 

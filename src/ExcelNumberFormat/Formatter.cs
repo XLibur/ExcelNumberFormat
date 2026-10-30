@@ -277,11 +277,7 @@ namespace ExcelNumberFormat
                 }
                 else if (token == "/")
                 {
-#if NETSTANDARD1_0
-                    result.Append(DateTime.MaxValue.ToString("/d", culture)[0]);
-#else
                     result.Append(culture.DateTimeFormat.DateSeparator);
-#endif
                 }
                 else if (token == ",")
                 {
