@@ -1,9 +1,38 @@
 ﻿using System;
+using System.Globalization;
 
 namespace Xlibur.ExcelNumberFormat
 {
     internal static class CompatibleConvert
     {
+        /// <summary>
+        /// Maps the other numeric and date/time types onto the double, <see cref="DateTime"/> and <see cref="TimeSpan"/> values the formatter handles.
+        /// Other values are returned unchanged.
+        /// </summary>
+        public static object Normalize(object value)
+        {
+            switch (value)
+            {
+                case byte _:
+                case sbyte _:
+                case ushort _:
+                case uint _:
+                case long _:
+                case ulong _:
+                case decimal _:
+                    return Convert.ToDouble(value, CultureInfo.InvariantCulture);
+                case float f:
+                    // Go through the shortest round-trip string so 1234.56f becomes 1234.56 and not 1234.56005859375
+                    return double.Parse(f.ToString("G7", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+                case DateOnly d:
+                    return d.ToDateTime(TimeOnly.MinValue);
+                case TimeOnly t:
+                    return t.Ticks / (double)TimeSpan.TicksPerDay;
+                default:
+                    return value;
+            }
+        }
+
         /// <summary>
         /// A backward-compatible version of <see cref="Convert.ToString(object, IFormatProvider)"/>.
         /// Starting from .net Core 3.0 the default precision used for formatting floating point number has changed.
