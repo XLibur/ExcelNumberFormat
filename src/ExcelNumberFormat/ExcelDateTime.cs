@@ -107,8 +107,23 @@ namespace Xlibur.ExcelNumberFormat
         {
             if (value is double doubleValue)
             {
-                result = new ExcelDateTime(doubleValue, isDate1904);
-                return true;
+                // NaN, infinity and serials outside the DateTime range have no date
+                if (double.IsNaN(doubleValue) || Math.Abs(doubleValue) > 1e7)
+                {
+                    result = null;
+                    return false;
+                }
+
+                try
+                {
+                    result = new ExcelDateTime(doubleValue, isDate1904);
+                    return true;
+                }
+                catch (ArgumentOutOfRangeException)
+                {
+                    result = null;
+                    return false;
+                }
             }
             if (value is int intValue)
             {

@@ -18,6 +18,12 @@
 
 ### 🐛 Bug Fixes
 
+- **Empty sections hide the value.** `;;;`, `0;;0`, `0;` and `0.00;;"zero"` stopped parsing at the first empty section, so later sections were dropped and the value was shown. A trailing `;` now opens an empty section too, and text is hidden by `;;;` as in Excel.
+- **Scientific formats handle zero and rounding carries.** `Format(0, "0.00E+00")` threw; it now gives `0.00E+00`. `9.999` gave `10.00E+01` instead of `1.00E+01`, and `99999` with `0.0E+0` gave `10.0E+4` instead of `1.0E+5`.
+- **Fractions round and carry like Excel.** `-0.25` with `?/4` gave `-3/4` instead of `-1/4`, `1.75` with `?/4` gave `3/4` instead of `7/4`, and `2.99` with `# ?/4` gave `2` instead of `3`. Whole parts larger than an `int` no longer wrap around.
+- **The sign is hidden in the second section of scientific and fraction formats**, as it already was for numbers: `-5` with `0.0E+00;0.0E+00` gives `5.0E+00`.
+- **Malformed input no longer throws.** A condition without a number (`[<]0`) makes the format invalid instead of throwing from the constructor, as does a denominator constant too large for an `int`. NaN, infinity and date serials outside the supported range are shown as plain text, and durations over 2^31 seconds do not wrap around.
+- **Whole `float` values keep their exact value.** `123456792f` with `0` gave `123456790`.
 - **Numbers round half away from zero, as Excel does.** `2.5` with `0` gave `2`, and `0.125` with `0.00` gave `0.12`. The value is reduced to 15 significant digits and rounded half up, so `2.675` with `0.00` gives `2.68` ([#1](https://github.com/XLibur/ExcelNumberFormat/issues/1)).
 - **Literal text in a text section is kept when the format has fewer than four sections.** `"Prefix: "@` formatted `abc` as `abc`; it now gives `Prefix: abc` ([#1](https://github.com/XLibur/ExcelNumberFormat/issues/1)).
 - **`.0`, `.00` and `.000` show that many fractional second digits and round.** They always showed three digits and never rounded. `mm:ss.0` of 12.34 seconds gave `00:12.340`; it now gives `00:12.3`, and 59.96 seconds gives `01:00.0`. Excel rounds the exact stored value half up, so does the library; the expected values were checked against Excel 16 ([#8](https://github.com/XLibur/ExcelNumberFormat/issues/8)).

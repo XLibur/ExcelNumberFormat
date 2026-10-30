@@ -161,5 +161,39 @@ namespace Xlibur.ExcelNumberFormat.Tests
             await Test(0, "0", "0");
 
         }
+
+        [Test]
+        public async Task TestFractionConstantDenominator()
+        {
+            // Expected values were checked against Excel 16
+            await Test(-0.25, "?/4", "-1/4");
+            await Test(1.75, "?/4", "7/4");
+            await Test(1.75, "# ?/4", "1 3/4");
+            await Test(-1.75, "# ?/4", "-1 3/4");
+        }
+
+        [Test]
+        public async Task TestFractionRoundingCarry()
+        {
+            await Test(2.99, "# ?/4", "3    ");
+            await Test(2.9999999, "# ?/?", "3    ");
+            await Test(0.9999999, "?/?", "1/1");
+        }
+
+        [Test]
+        public async Task TestFractionSignInSections()
+        {
+            await Test(-0.5, "?/?", "-1/2");
+            await Test(-0.5, "?/?;?/?", "1/2");
+            await Test(-2.5, "# ?/?", "-2 1/2");
+            await Test(-2.5, "# ?/?;# ?/?", "2 1/2");
+        }
+
+        [Test]
+        public async Task TestFractionLargeValues()
+        {
+            // Excel shows ######## here; the whole part must not wrap around like a 32-bit int
+            await Test(3e9, "# ?/?", "3000000000    ");
+        }
     }
 }

@@ -22,8 +22,14 @@ namespace Xlibur.ExcelNumberFormat
                 case decimal _:
                     return Convert.ToDouble(value, CultureInfo.InvariantCulture);
                 case float f:
-                    // Go through the shortest round-trip string so 1234.56f becomes 1234.56 and not 1234.56005859375
-                    return double.Parse(f.ToString("G7", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+                    // Whole numbers that print as integers widen exactly, 123456792f stays 123456792.
+                    if (float.IsNaN(f) || float.IsInfinity(f) || (f == Math.Floor(f) && Math.Abs(f) < 1e15f))
+                        return (double)f;
+
+                    // Others go through a short string, so 1234.56f becomes 1234.56 and not 1234.56005859375.
+                    // Very large floats keep 7 significant digits, as General does.
+                    var format = f == Math.Floor(f) ? "G7" : "R";
+                    return double.Parse(f.ToString(format, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
                 case DateOnly d:
                     return d.ToDateTime(TimeOnly.MinValue);
                 case TimeOnly t:
