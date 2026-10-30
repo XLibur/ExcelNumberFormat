@@ -345,11 +345,13 @@ namespace ExcelNumberFormat
                         break;
 
                     case DateTokenKind.AmPm:
-                        result.Append(date.Hour < 12 ? "AM" : "PM");
+                        result.Append(GetAmPmDesignator(date.Hour, lcid, culture));
                         break;
 
                     case DateTokenKind.AmPmShort:
-                        if (token.IsUpper)
+                        if (lcid != 0)
+                            result.Append(GetAmPmDesignator(date.Hour, lcid, culture));
+                        else if (token.IsUpper)
                             result.Append(date.Hour < 12 ? 'A' : 'P');
                         else
                             result.Append(date.Hour < 12 ? 'a' : 'p');
@@ -375,6 +377,33 @@ namespace ExcelNumberFormat
             }
 
             return StringBuilderCache.GetStringAndRelease(result);
+        }
+
+        /// <summary>
+        /// The AM or PM designator of the locale in a [$-XXX] code, or of the culture if the format has none.
+        /// </summary>
+        private static string GetAmPmDesignator(int hour, int lcid, CultureInfo culture)
+        {
+            var format = (lcid != 0 ? GetLcidCulture(lcid) : null) ?? culture;
+            var designator = hour < 12 ? format.DateTimeFormat.AMDesignator : format.DateTimeFormat.PMDesignator;
+            return string.IsNullOrEmpty(designator) ? (hour < 12 ? "AM" : "PM") : designator;
+        }
+
+        private static CultureInfo GetLcidCulture(int lcid)
+        {
+            // The language is in the low 16 bits, the rest selects calendar and numeral systems
+            var language = lcid & 0xFFFF;
+            if (language == 0)
+                return null;
+
+            try
+            {
+                return CultureInfo.GetCultureInfo(language);
+            }
+            catch (CultureNotFoundException)
+            {
+                return null;
+            }
         }
 
         private static readonly long[] PowersOfTen = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
