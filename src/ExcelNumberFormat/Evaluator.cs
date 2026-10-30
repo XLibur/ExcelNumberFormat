@@ -6,34 +6,28 @@ namespace ExcelNumberFormat
 {
     internal static class Evaluator
     {
-        public static Section GetSection(List<Section> sections, object value)
+        public static Section GetSection(List<Section> sections, FormatValue value)
         {
             // Standard format has up to 4 sections:
             // Positive;Negative;Zero;Text
-            switch (value)
+            switch (value.Kind)
             {
-                case string s:
+                case FormatValueKind.Text:
                     if (sections.Count >= 4)
                         return sections[3];
 
                     // Fewer than four sections: Excel applies the text-only section containing '@', if any.
                     return GetTextSectionWithPlaceholder(sections);
 
-                case DateTime dt:
+                case FormatValueKind.DateTime:
                     // TODO: Check date conditions need date helpers and Date1904 knowledge
                     return GetFirstSection(sections, SectionType.Date);
 
-                case TimeSpan ts:
-                    return GetNumericSection(sections, ts.TotalDays);
+                case FormatValueKind.TimeSpan:
+                    return GetNumericSection(sections, value.TimeSpan.TotalDays);
 
-                case double d:
-                    return GetNumericSection(sections, d);
-
-                case int i:
-                    return GetNumericSection(sections, i);
-
-                case short s:
-                    return GetNumericSection(sections, s);
+                case FormatValueKind.Number:
+                    return GetNumericSection(sections, value.Number);
 
                 default:
                     return null;

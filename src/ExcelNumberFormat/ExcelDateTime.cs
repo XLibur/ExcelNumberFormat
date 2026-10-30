@@ -103,12 +103,14 @@ namespace ExcelNumberFormat
             return AdjustedDateTime.ToString(numberFormat, culture);
         }
 
-        public static bool TryConvert(object value, bool isDate1904, CultureInfo culture, out ExcelDateTime result)
+        public static bool TryConvert(FormatValue value, bool isDate1904, CultureInfo culture, out ExcelDateTime result)
         {
-            if (value is double doubleValue)
+            if (value.Kind == FormatValueKind.Number)
             {
+                var number = value.Number;
+
                 // NaN, infinity and serials outside the DateTime range have no date
-                if (double.IsNaN(doubleValue) || Math.Abs(doubleValue) > 1e7)
+                if (double.IsNaN(number) || Math.Abs(number) > 1e7)
                 {
                     result = null;
                     return false;
@@ -116,7 +118,7 @@ namespace ExcelNumberFormat
 
                 try
                 {
-                    result = new ExcelDateTime(doubleValue, isDate1904);
+                    result = new ExcelDateTime(number, isDate1904);
                     return true;
                 }
                 catch (ArgumentOutOfRangeException)
@@ -125,19 +127,10 @@ namespace ExcelNumberFormat
                     return false;
                 }
             }
-            if (value is int intValue)
+
+            if (value.Kind == FormatValueKind.DateTime)
             {
-                result = new ExcelDateTime(intValue, isDate1904);
-                return true;
-            }
-            if (value is short shortValue)
-            {
-                result = new ExcelDateTime(shortValue, isDate1904);
-                return true;
-            }
-            else if (value is DateTime dateTimeValue)
-            {
-                result = new ExcelDateTime(dateTimeValue);
+                result = new ExcelDateTime(value.DateTime);
                 return true;
             }
 

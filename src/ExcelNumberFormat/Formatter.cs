@@ -7,21 +7,7 @@ namespace ExcelNumberFormat
 {
     static internal class Formatter
     {
-        static public string Format(object value, string formatString, CultureInfo culture, bool isDate1904)
-        {
-            var format = new NumberFormat(formatString);
-            if (!format.IsValid)
-                return CompatibleConvert.ToString(value, culture);
-
-            var normalized = CompatibleConvert.Normalize(value);
-            var section = Evaluator.GetSection(format.Sections, normalized);
-            if (section == null)
-                return CompatibleConvert.ToString(value, culture);
-
-            return Format(normalized, section, culture, isDate1904);
-        }
-
-        static public string Format(object value, Section node, CultureInfo culture, bool isDate1904)
+        static public string Format(FormatValue value, Section node, CultureInfo culture, bool isDate1904)
         {
             switch (node.Type)
             {
@@ -47,19 +33,19 @@ namespace ExcelNumberFormat
 
                 case SectionType.Duration:
                     var durationValue = RoundSubSeconds(value, GetFractionDigits(node.GeneralTextDateDurationParts));
-                    if (durationValue is TimeSpan ts)
+                    if (durationValue.Kind == FormatValueKind.TimeSpan)
                     {
-                        return FormatTimeSpan(ts, node.GeneralTextDateDurationParts, culture);
+                        return FormatTimeSpan(durationValue.TimeSpan, node.GeneralTextDateDurationParts, culture);
                     }
                     else
                     {
-                        var d = Convert.ToDouble(durationValue);
+                        var d = durationValue.ToDouble(null);
                         return FormatTimeSpan(TimeSpan.FromDays(d), node.GeneralTextDateDurationParts, culture);
                     }
 
                 case SectionType.General:
                 case SectionType.Text:
-                    return FormatGeneralText(CompatibleConvert.ToString(value, culture), node.GeneralTextDateDurationParts);
+                    return FormatGeneralText(value.ToString(culture), node.GeneralTextDateDurationParts);
 
                 case SectionType.Exponential:
                     return FormatExponential(ToDoubleHidingSign(value, node, culture), node, culture);
@@ -91,26 +77,28 @@ namespace ExcelNumberFormat
         /// Rounds a date, time or duration to the displayed number of fractional second digits (half up, like Excel),
         /// so that a carry ripples into the seconds, minutes and hours.
         /// </summary>
-        static object RoundSubSeconds(object value, int digits)
+        static FormatValue RoundSubSeconds(FormatValue value, int digits)
         {
             if (digits == 0)
                 return value;
 
-            switch (value)
+            switch (value.Kind)
             {
-                case double d:
-                    return RoundSubSeconds(d, digits);
-                case DateTime dt:
+                case FormatValueKind.Number:
+                    return FormatValue.FromDouble(RoundSubSeconds(value.Number, digits));
+                case FormatValueKind.DateTime:
+                    var dt = value.DateTime;
                     var unit = TicksPerFractionDigit(digits);
                     var roundedTicks = (dt.Ticks + unit / 2) / unit * unit;
-                    return roundedTicks > DateTime.MaxValue.Ticks ? dt : new DateTime(roundedTicks, dt.Kind);
-                case TimeSpan ts:
+                    return roundedTicks > DateTime.MaxValue.Ticks ? value : FormatValue.FromDateTime(new DateTime(roundedTicks, dt.Kind));
+                case FormatValueKind.TimeSpan:
+                    var ts = value.TimeSpan;
                     var tsUnit = TicksPerFractionDigit(digits);
                     if (ts.Ticks == long.MinValue || Math.Abs(ts.Ticks) > long.MaxValue - tsUnit)
-                        return ts;
+                        return value;
 
                     var tsTicks = (Math.Abs(ts.Ticks) + tsUnit / 2) / tsUnit * tsUnit;
-                    return new TimeSpan(ts.Ticks < 0 ? -tsTicks : tsTicks);
+                    return FormatValue.FromTimeSpan(new TimeSpan(ts.Ticks < 0 ? -tsTicks : tsTicks));
                 default:
                     return value;
             }
@@ -170,9 +158,9 @@ namespace ExcelNumberFormat
         /// Converts the value to a double. The sign is hidden in the second section and in a conditional first section,
         /// where the format itself decides how a negative number is shown.
         /// </summary>
-        static double ToDoubleHidingSign(object value, Section node, CultureInfo culture)
+        static double ToDoubleHidingSign(FormatValue value, Section node, CultureInfo culture)
         {
-            var number = Convert.ToDouble(value, culture);
+            var number = value.ToDouble(culture);
             if ((node.SectionIndex == 0 && node.Condition != null) || node.SectionIndex == 1)
                 number = Math.Abs(number);
 
