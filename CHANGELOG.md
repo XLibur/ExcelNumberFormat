@@ -7,6 +7,10 @@
 
 ## Unreleased
 
+### 🐛 Bug Fixes
+
+- Fixed readme
+
 ## v1.2.0 - 2026-10-30
 
 ### 💥 Breaking Changes
