@@ -493,6 +493,33 @@ namespace Xlibur.ExcelNumberFormat.Tests
         }
 
         [Test]
+        public async Task TestOtherNumericTypes()
+        {
+            await Test((byte)200, "#,##0", "200");
+            await Test((sbyte)-5, "0.0", "-5.0");
+            await Test((ushort)1234, "#,##0", "1,234");
+            await Test(1234u, "#,##0", "1,234");
+            await Test(1234L, "#,##0", "1,234");
+            await Test(12345678901234UL, "#,##0", "12,345,678,901,234");
+            await Test(1234.5f, "#,##0.00", "1,234.50");
+            await Test(1234.56f, "0.00", "1234.56");
+            await Test(1234m, "#,##0", "1,234");
+            await Test(1234.5m, "#,##0.00", "1,234.50");
+            await Test(0.25m, "0%", "25%");
+            await Test(-1234L, "#,##0;(#,##0)", "(1,234)");
+            await Test(45498L, "yyyy-mm-dd", "2024-07-25");
+            await Test(0L, "#,##0;-#,##0;\"zero\"", "zero");
+        }
+
+        [Test]
+        public async Task TestDateOnlyAndTimeOnly()
+        {
+            await Test(new DateOnly(2024, 7, 25), "yyyy-mm-dd", "2024-07-25");
+            await Test(new TimeOnly(13, 45, 30), "hh:mm:ss", "13:45:30");
+            await Test(new TimeOnly(13, 45, 30), "h:mm AM/PM", "1:45 PM");
+        }
+
+        [Test]
         public async Task TestRoundHalfAwayFromZero()
         {
             await Test(2.5, "0", "3");
