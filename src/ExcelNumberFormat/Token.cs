@@ -99,6 +99,9 @@ namespace ExcelNumberFormat
                 case 's':
                 case 'h':
                     return true;
+                case 'e':
+                    // Era year. "e+" and "e-" are exponents, and an upper case E is not a date code
+                    return token[0] == 'e' && !IsExponent(token);
                 case 'g':
                     return !IsGeneral(token);
                 case 'a':
