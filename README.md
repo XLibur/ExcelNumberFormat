@@ -49,13 +49,3 @@ In case of errors, `Format()` returns the value from `CompatibleConvert.ToString
 
 `CompatibleConvert.ToString()` formats floats and doubles with explicit precision, or falls back to `Convert.ToString()` for any other types.
 `ExcelDateTime.TryConvert()` uses DateTimes as is, or converts numeric values to a DateTime with adjustments for legacy Excel behaviors.
-
-## TODO/notes
-
-- 'General' is formatted with `.ToString()` instead of Excel conventions.
-- No errors: Invalid format strings and incompatible input values are formatted with `.ToString()`.
-- No color information.
-- Variable width space is returned as regular space.
-- Repeat-to-fill characters are printed once, not repeated.
-- No alignment hinting.
-- No date conditions.
