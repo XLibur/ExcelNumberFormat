@@ -185,5 +185,23 @@ namespace Xlibur.ExcelNumberFormat.Tests
             var actual = Format(new DateTime(1978, 8, 17), "DD/MM/YYYY", new CultureInfo(cultureName));
             await Assert.That(actual).IsEqualTo(expected);
         }
+
+        [Test]
+        public async Task TestOutOfRangeDateSerials()
+        {
+            // No date for these, so the value is shown as it is rather than throwing
+            await Test(1e12, "yyyy-mm-dd", "1000000000000");
+            await Test(double.NaN, "yyyy-mm-dd", "NaN");
+            await Test(double.PositiveInfinity, "yyyy-mm-dd hh:mm", "Infinity");
+            await Test(-1e12, "yyyy-mm-dd", "-1000000000000");
+        }
+
+        [Test]
+        public async Task TestLargeDurations()
+        {
+            // More than 2^31 seconds does not wrap around
+            await Test(new TimeSpan(30000, 0, 0, 0), "[s]", "2592000000");
+            await Test(30000.5, "[s]", "2592043200");
+        }
     }
 }

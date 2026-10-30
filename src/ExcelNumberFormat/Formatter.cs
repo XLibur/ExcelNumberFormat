@@ -27,12 +27,7 @@ namespace Xlibur.ExcelNumberFormat
             switch (node.Type)
             {
                 case SectionType.Number:
-                    // Hide sign under certain conditions and section index
-                    var number = Convert.ToDouble(value, culture);
-                    if ((node.SectionIndex == 0 && node.Condition != null) || node.SectionIndex == 1)
-                        number = Math.Abs(number);
-
-                    return FormatNumber(number, node.Number, culture);
+                    return FormatNumber(ToDoubleHidingSign(value, node, culture), node.Number, culture);
 
                 case SectionType.Date:
                     var dateValue = RoundSubSeconds(value, GetFractionDigits(node.GeneralTextDateDurationParts));
@@ -68,10 +63,10 @@ namespace Xlibur.ExcelNumberFormat
                     return FormatGeneralText(CompatibleConvert.ToString(value, culture), node.GeneralTextDateDurationParts);
 
                 case SectionType.Exponential:
-                    return FormatExponential(Convert.ToDouble(value, culture), node, culture);
+                    return FormatExponential(ToDoubleHidingSign(value, node, culture), node, culture);
 
                 case SectionType.Fraction:
-                    return FormatFraction(Convert.ToDouble(value, culture), node, culture);
+                    return FormatFraction(ToDoubleHidingSign(value, node, culture), node, culture);
 
                 default:
                     throw new InvalidOperationException("Unknown number format section");
@@ -176,6 +171,19 @@ namespace Xlibur.ExcelNumberFormat
             return value < 0 ? -rounded : rounded;
         }
 
+        /// <summary>
+        /// Converts the value to a double. The sign is hidden in the second section and in a conditional first section,
+        /// where the format itself decides how a negative number is shown.
+        /// </summary>
+        static double ToDoubleHidingSign(object value, Section node, CultureInfo culture)
+        {
+            var number = Convert.ToDouble(value, culture);
+            if ((node.SectionIndex == 0 && node.Condition != null) || node.SectionIndex == 1)
+                number = Math.Abs(number);
+
+            return number;
+        }
+
         static string FormatGeneralText(string text, List<string> tokens)
         {
             var result = new StringBuilder();
@@ -229,21 +237,21 @@ namespace Xlibur.ExcelNumberFormat
                 }
                 else if (token.StartsWith("[h", StringComparison.OrdinalIgnoreCase))
                 {
-                    var value = (int)timeSpan.TotalHours;
+                    var value = (long)timeSpan.TotalHours;
                     var digits = token.Length - 2;
                     result.Append(value.ToString("D" + digits));
                     timeSpan = new TimeSpan(0, 0, Math.Abs(timeSpan.Minutes), Math.Abs(timeSpan.Seconds), Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (token.StartsWith("[m", StringComparison.OrdinalIgnoreCase))
                 {
-                    var value = (int)timeSpan.TotalMinutes;
+                    var value = (long)timeSpan.TotalMinutes;
                     var digits = token.Length - 2;
                     result.Append(value.ToString("D" + digits));
                     timeSpan = new TimeSpan(0, 0, 0, Math.Abs(timeSpan.Seconds), Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (token.StartsWith("[s", StringComparison.OrdinalIgnoreCase))
                 {
-                    var value = (int)timeSpan.TotalSeconds;
+                    var value = (long)timeSpan.TotalSeconds;
                     var digits = token.Length - 2;
                     result.Append(value.ToString("D" + digits));
                     timeSpan = new TimeSpan(0, 0, 0, 0, Math.Abs(timeSpan.Milliseconds));
@@ -601,6 +609,10 @@ namespace Xlibur.ExcelNumberFormat
 
         static string FormatExponential(double value, Section format, CultureInfo culture)
         {
+            // NaN and infinity have no digits to lay out
+            if (double.IsNaN(value) || double.IsInfinity(value))
+                return value.ToString(culture);
+
             // The application shall display a number to the right of 
             // the "E" symbol that corresponds to the number of places that 
             // the decimal point was moved. 
@@ -611,17 +623,35 @@ namespace Xlibur.ExcelNumberFormat
                 baseDigits = GetDigitCount(format.Exponential.BeforeDecimal);
             }
 
-            var exponent = (int)Math.Floor(Math.Log10(Math.Abs(value)));
-            var mantissa = value / Math.Pow(10, exponent);
+            var exponent = 0;
+            var mantissa = value;
+            var step = Math.Max(baseDigits, 1);
+            var afterDecimalDigits = format.Exponential.AfterDecimal != null ? GetDigitCount(format.Exponential.AfterDecimal) : 0;
 
-            var shift = Math.Abs(exponent) % baseDigits;
-            if (shift > 0)
+            // Zero has no exponent to find
+            if (value != 0)
             {
-                if (exponent < 0)
-                    shift = (baseDigits - shift);
+                exponent = (int)Math.Floor(Math.Log10(Math.Abs(value)));
+                mantissa = value / Math.Pow(10, exponent);
 
-                mantissa *= Math.Pow(10, shift);
-                exponent -= shift;
+                var shift = baseDigits > 0 ? Math.Abs(exponent) % baseDigits : 0;
+                if (shift > 0)
+                {
+                    if (exponent < 0)
+                        shift = (baseDigits - shift);
+
+                    mantissa *= Math.Pow(10, shift);
+                    exponent -= shift;
+                }
+
+                // Rounding the mantissa can carry it out of its range, 9.999 with 0.00E+00 becomes 10.00.
+                // Move to the next exponent, as Excel does: 1.00E+01.
+                var rounded = double.Parse(RoundToFixed(Math.Abs(mantissa), afterDecimalDigits), CultureInfo.InvariantCulture);
+                if (rounded >= Math.Pow(10, step))
+                {
+                    mantissa /= Math.Pow(10, step);
+                    exponent += step;
+                }
             }
 
             var result = new StringBuilder();
@@ -644,28 +674,49 @@ namespace Xlibur.ExcelNumberFormat
 
         static string FormatFraction(double value, Section format, CultureInfo culture)
         {
-            int integral = 0;
+            // NaN and infinity have no digits to lay out
+            if (double.IsNaN(value) || double.IsInfinity(value))
+                return value.ToString(culture);
+
+            // Kept as double, a whole part can be larger than an int
+            double integral = 0;
             int numerator, denominator;
 
             bool sign = value < 0;
+            value = Math.Abs(value);
 
             if (format.Fraction.IntegerPart != null)
             {
-                integral = (int)Math.Truncate(value);
-                value = Math.Abs(value - integral);
+                integral = Math.Truncate(value);
+                value -= integral;
             }
 
             if (format.Fraction.DenominatorConstant != 0)
             {
                 denominator = format.Fraction.DenominatorConstant;
                 var rr = Math.Round(value * denominator);
-                var b = Math.Floor(rr / denominator);
-                numerator = (int)(rr - b * denominator);
+
+                // Without an integer part the fraction stays improper (7/4). With one, a carry (3/3) goes to the integer part.
+                if (format.Fraction.IntegerPart != null)
+                {
+                    var carry = Math.Floor(rr / denominator);
+                    integral += carry;
+                    rr -= carry * denominator;
+                }
+
+                numerator = (int)rr;
             }
             else
             {
                 var denominatorDigits = Math.Min(GetDigitCount(format.Fraction.Denominator), 7);
                 GetFraction(value, (int)Math.Pow(10, denominatorDigits) - 1, out numerator, out denominator);
+
+                if (format.Fraction.IntegerPart != null && numerator >= denominator)
+                {
+                    integral += numerator / denominator;
+                    numerator = 0;
+                    denominator = 1;
+                }
             }
 
             // Don't hide fraction if at least one zero in the numerator format
@@ -679,7 +730,7 @@ namespace Xlibur.ExcelNumberFormat
 
             // Print integer part with significant zero if fraction part is hidden
             if (format.Fraction.IntegerPart != null)
-                FormatThousands(Math.Abs(integral).ToString("F0", CultureInfo.InvariantCulture), false, hideFraction, format.Fraction.IntegerPart, culture, result);
+                FormatThousands(integral.ToString("F0", CultureInfo.InvariantCulture), false, hideFraction, format.Fraction.IntegerPart, culture, result);
 
             var numeratorString = Math.Abs(numerator).ToString("F0", CultureInfo.InvariantCulture);
             var denominatorString = denominator.ToString("F0", CultureInfo.InvariantCulture);

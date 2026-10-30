@@ -213,5 +213,45 @@ namespace Xlibur.ExcelNumberFormat.Tests
             await Test(1234.56, "[$€-1809]# ##0.00", "€1 234.56");
             await Test(1234.56, "#,##0.00 [$EUR]", "1,234.56 EUR");
         }
+
+        [Test]
+        public async Task TestExponentZeroAndCarry()
+        {
+            // Expected values were checked against Excel 16
+            await Test(0, "0.00E+00", "0.00E+00");
+            await Test(9.999, "0.00E+00", "1.00E+01");
+            await Test(99999, "0.0E+0", "1.0E+5");
+            await Test(999.99, "##0.0E+0", "1.0E+3");
+            await Test(0.00099999, "0.00E+00", "1.00E-03");
+            await Test(-9.999, "0.00E+00", "-1.00E+01");
+        }
+
+        [Test]
+        public async Task TestExponentSignInSections()
+        {
+            await Test(-5, "0.0E+00", "-5.0E+00");
+            await Test(-5, "0.0E+00;0.0E+00", "5.0E+00");
+            await Test(-5, "0.0E+00;-0.0E+00", "-5.0E+00");
+        }
+
+        [Test]
+        public async Task TestNonFiniteNumbers()
+        {
+            await Test(double.NaN, "0.00E+00", "NaN");
+            await Test(double.PositiveInfinity, "0.00E+00", "Infinity");
+            await Test(double.NaN, "# ?/?", "NaN");
+            await Test(double.PositiveInfinity, "# ?/?", "Infinity");
+            await Test(double.NaN, "yyyy-mm-dd", "NaN");
+            await Test(double.PositiveInfinity, "[h]:mm", "Infinity");
+        }
+
+        [Test]
+        public async Task TestFloatConversion()
+        {
+            await Test(123456792f, "0", "123456792");
+            await Test(1234.56f, "0.00", "1234.56");
+            await Test(1234.5678f, "0.0000", "1234.5677");
+            await Test(float.MaxValue, "General", "3.402823E+38");
+        }
     }
 }

@@ -487,5 +487,40 @@ namespace Xlibur.ExcelNumberFormat.Tests
             result = Format(new DateTime(2017, 10, 28), formatString, CultureInfo.InvariantCulture);
             await Assert.That(result).IsEqualTo("10/28/2017 00:00:00");
         }
+
+        [Test]
+        public async Task TestEmptySections()
+        {
+            // Expected values were checked against Excel 16
+            await Test(-5, "0;;0", "");
+            await Test(0, "0;;0", "0");
+            await Test(-5, "0;", "");
+            await Test(0, "0;;", "");
+            await Test(5, ";;;", "");
+            await Test(-5, ";;;", "");
+            await Test(0, ";;;", "");
+            await Test("abc", ";;;", "");
+            await Test(-5, "0.00;;\"zero\"", "");
+            await Test(0, "0.00;;\"zero\"", "zero");
+            await Test(5, "0.00;;\"zero\"", "5.00");
+        }
+
+        [Test]
+        [Arguments("[<]0")]
+        [Arguments("[>-]0")]
+        [Arguments("[=.]0")]
+        public async Task TestConditionWithoutNumberIsInvalid(string formatString)
+        {
+            var format = new NumberFormat(formatString);
+            await Assert.That(format.IsValid).IsFalse();
+        }
+
+        [Test]
+        public async Task TestFractionConstantDenominatorTooLarge()
+        {
+            // Does not throw from the constructor
+            var format = new NumberFormat("# ?/99999999999");
+            await Assert.That(format.IsValid).IsFalse();
+        }
     }
 }
