@@ -8,6 +8,10 @@
 
 ## Unreleased
 
+### 🐛 Bug Fixes
+
+- **`AM/PM` and `A/P` use the locale's designators.** They always printed `AM`, `PM`, `A` and `P`. Now the locale in a `[$-XXX]` code, or the culture if there is none, supplies them, so `[$-405]h:mm AM/PM` prints `dop.` and `odp.`, as Excel does. Without a locale code `A/P` still prints a single letter. With one it prints the full designator, as Excel does ([andersnm/ExcelNumberFormat#45](https://github.com/andersnm/ExcelNumberFormat/issues/45)).
+
 ## v1.2.1 - 2026-10-30
 
 ### 🐛 Bug Fixes
