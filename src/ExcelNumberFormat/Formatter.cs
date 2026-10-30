@@ -7,6 +7,8 @@ namespace ExcelNumberFormat
 {
     static internal class Formatter
     {
+        private const int JapaneseLcid = 0x411;
+
         static public string Format(FormatValue value, Section node, CultureInfo culture, bool isDate1904)
         {
             switch (node.Type)
@@ -24,7 +26,7 @@ namespace ExcelNumberFormat
                         if (node.Lcid == 0xF400)
                             return excelDateTime.ToString(culture.DateTimeFormat.LongTimePattern, culture);
 
-                        return FormatDate(excelDateTime, node.DateTokens, node.DateContainsAmPm, culture);
+                        return FormatDate(excelDateTime, node.DateTokens, node.DateContainsAmPm, node.Lcid, culture);
                     }
                     else
                     {
@@ -251,7 +253,7 @@ namespace ExcelNumberFormat
             return StringBuilderCache.GetStringAndRelease(result);
         }
 
-        private static string FormatDate(ExcelDateTime date, DateToken[] tokens, bool containsAmPm, CultureInfo culture)
+        private static string FormatDate(ExcelDateTime date, DateToken[] tokens, bool containsAmPm, int lcid, CultureInfo culture)
         {
             var result = StringBuilderCache.Acquire();
             for (var i = 0; i < tokens.Length; i++)
@@ -315,6 +317,12 @@ namespace ExcelNumberFormat
                         break;
 
                     case DateTokenKind.Era:
+                        if (lcid == JapaneseLcid && JapaneseEra.TryGet(date.AdjustedDateTime, out var japaneseEra))
+                        {
+                            result.Append(token.Digits == 1 ? japaneseEra.Initial : token.Digits == 2 ? japaneseEra.ShortName : japaneseEra.Name);
+                            break;
+                        }
+
                         var era = culture.DateTimeFormat.Calendar.GetEra(date.AdjustedDateTime);
                         if (token.Digits < 3)
                         {
@@ -324,6 +332,15 @@ namespace ExcelNumberFormat
                         {
                             result.Append(culture.DateTimeFormat.GetEraName(era));
                         }
+
+                        break;
+
+                    case DateTokenKind.EraYear:
+                        // Only the Japanese locale counts years from the start of the era, all others print the year
+                        if (lcid == JapaneseLcid && JapaneseEra.TryGet(date.AdjustedDateTime, out japaneseEra))
+                            AppendPadded(result, date.Year - japaneseEra.StartYear + 1, token.Digits);
+                        else
+                            AppendPadded(result, date.Year, 4);
 
                         break;
 
