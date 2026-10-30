@@ -14,6 +14,7 @@
     <PackageTags>excel,formatting,numfmt,formatcode</PackageTags>
     <PackageProjectUrl>https://github.com/XLibur/ExcelNumberFormat</PackageProjectUrl>
     <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <AssemblyOriginatorKeyFile>ExcelNumberFormat.snk</AssemblyOriginatorKeyFile>
     <SignAssembly>true</SignAssembly>
     <PublicSign Condition=" '$(OS)' != 'Windows_NT' ">true</PublicSign>
@@ -26,5 +27,6 @@
 
   <ItemGroup>
     <None Include="icon.png" Pack="true" PackagePath="\"/>
+    <None Include="README.md" Pack="true" PackagePath="\"/>
   </ItemGroup>
 </Project>
