@@ -476,6 +476,46 @@ namespace Xlibur.ExcelNumberFormat.Tests
         }
 
         [Test]
+        public async Task TestFractionalSeconds()
+        {
+            // Expected values were checked against Excel 16, which shows as many digits as there are zeros and rounds them
+            await Test(12.34 / 86400, "mm:ss.0", "00:12.3");
+            await Test(12.34 / 86400, "mm:ss.00", "00:12.34");
+            await Test(12.345 / 86400, "mm:ss.00", "00:12.35");
+            await Test(12.35 / 86400, "mm:ss.0", "00:12.4");
+            await Test(588.34 / 86400, "mm:ss.0", "09:48.3");
+            await Test(12.3456 / 86400, "mm:ss.000", "00:12.346");
+            await Test(0.5 / 86400, "mm:ss.0", "00:00.5");
+
+            // Stored just below .25, so Excel rounds down
+            await Test(3661.25 / 86400, "h:mm:ss.0", "1:01:01.2");
+            await Test(3661.26 / 86400, "h:mm:ss.0", "1:01:01.3");
+            await Test(3661.26 / 86400, "h:mm:ss.00", "1:01:01.26");
+
+            // Rounding carries into seconds, minutes and hours
+            await Test(59.96 / 86400, "mm:ss.0", "01:00.0");
+            await Test(59.996 / 86400, "mm:ss.00", "01:00.00");
+            await Test(59.96 / 86400, "ss.0", "00.0");
+            await Test(3599.96 / 86400, "mm:ss.0", "00:00.0");
+
+            await Test(45498.123456, "mm:ss.00", "57:46.60");
+            await Test(45498.123456, "yyyy-mm-dd hh:mm:ss.0", "2024-07-25 02:57:46.6");
+            await Test(new DateTime(2024, 7, 25, 2, 57, 46, 598), "hh:mm:ss.0", "02:57:46.6");
+            await Test(new DateTime(2024, 7, 25, 2, 57, 59, 960), "hh:mm:ss.0", "02:58:00.0");
+        }
+
+        [Test]
+        public async Task TestFractionalSecondsDuration()
+        {
+            await Test(1.96 / 86400, "[ss].0", "02.0");
+            await Test(125.76 / 86400, "[mm]:ss.0", "02:05.8");
+            await Test(125.76 / 86400, "[h]:mm:ss.0", "0:02:05.8");
+            await Test(new TimeSpan(0, 0, 2, 5, 760), "[mm]:ss.00", "02:05.76");
+            await Test(new TimeSpan(0, 0, 2, 5, 760), "[mm]:ss.0", "02:05.8");
+            await Test(new TimeSpan(0, 0, 0, 59, 960), "[mm]:ss.0", "01:00.0");
+        }
+
+        [Test]
         public async Task TestSystemLongDateTime()
         {
             var date = 45498.0; // 2024-07-25
