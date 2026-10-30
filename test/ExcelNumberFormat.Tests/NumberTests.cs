@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
 using static ExcelNumberFormat.Tests.FormatHelper;
@@ -212,6 +213,82 @@ namespace ExcelNumberFormat.Tests
         {
             await Test(1234.56, "[$€-1809]# ##0.00", "€1 234.56");
             await Test(1234.56, "#,##0.00 [$EUR]", "1,234.56 EUR");
+        }
+
+        [Test]
+        public async Task TestRoundingMatchesFifteenDigitReference()
+        {
+            // Excel rounds the value reduced to 15 significant digits, half away from zero. The formatter takes a
+            // shortcut away from ties, so compare it with that definition over many values, ties included.
+            var rng = new Random(20261030);
+            var formats = new NumberFormat[8];
+            for (var d = 0; d < formats.Length; d++)
+                formats[d] = new NumberFormat(d == 0 ? "0" : "0." + new string('0', d));
+
+            var mismatches = new List<string>();
+            for (var i = 0; i < 20000; i++)
+            {
+                var digits = rng.Next(0, 8);
+                double value;
+                switch (i % 5)
+                {
+                    case 0: value = rng.NextDouble() * Math.Pow(10, rng.Next(-3, 9)); break;
+                    case 1: value = Math.Round(rng.NextDouble() * 10000, rng.Next(1, 6)); break;
+                    case 2: value = rng.Next(0, 2000000); break;
+                    case 3: value = (rng.Next(0, 100000) + 0.5) / Math.Pow(10, rng.Next(0, 7)); break;
+                    default: value = Math.Round(rng.NextDouble() * 1000, digits + 1) + 0.5 / Math.Pow(10, digits); break;
+                }
+
+                var decimalValue = decimal.Parse(value.ToString("G15", CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture);
+                var expected = Math.Round(decimalValue, digits, MidpointRounding.AwayFromZero).ToString("F" + digits, CultureInfo.InvariantCulture);
+                var actual = formats[digits].Format(value, CultureInfo.InvariantCulture);
+                if (expected != actual)
+                    mismatches.Add($"{value:R} with {digits} digits: expected {expected}, got {actual}");
+            }
+
+            await Assert.That(mismatches).IsEmpty();
+        }
+
+        [Test]
+        public async Task TestTypedOverloadsMatchObjectOverload()
+        {
+            // Each typed call binds to its own overload; the cast to object takes the boxed route. Both must agree.
+            var c = CultureInfo.InvariantCulture;
+            var cases = new (Func<NumberFormat, string> Typed, Func<NumberFormat, string> Boxed)[]
+            {
+                (f => f.Format((byte)200, c), f => f.Format((object)(byte)200, c)),
+                (f => f.Format((sbyte)-5, c), f => f.Format((object)(sbyte)-5, c)),
+                (f => f.Format((short)-1234, c), f => f.Format((object)(short)-1234, c)),
+                (f => f.Format((ushort)65535, c), f => f.Format((object)(ushort)65535, c)),
+                (f => f.Format(45498, c), f => f.Format((object)45498, c)),
+                (f => f.Format(4000000000u, c), f => f.Format((object)4000000000u, c)),
+                (f => f.Format(45498L, c), f => f.Format((object)45498L, c)),
+                (f => f.Format(long.MinValue, c), f => f.Format((object)long.MinValue, c)),
+                (f => f.Format(18446744073709551615UL, c), f => f.Format((object)18446744073709551615UL, c)),
+                (f => f.Format(1234.56f, c), f => f.Format((object)1234.56f, c)),
+                (f => f.Format(123456792f, c), f => f.Format((object)123456792f, c)),
+                (f => f.Format(0.125, c), f => f.Format((object)0.125, c)),
+                (f => f.Format(double.NaN, c), f => f.Format((object)double.NaN, c)),
+                (f => f.Format(45498.5m, c), f => f.Format((object)45498.5m, c)),
+                (f => f.Format(-0.001m, c), f => f.Format((object)(-0.001m), c)),
+                (f => f.Format(new DateTime(2024, 7, 25, 2, 57, 46, 598), c), f => f.Format((object)new DateTime(2024, 7, 25, 2, 57, 46, 598), c)),
+                (f => f.Format(new TimeSpan(1, 2, 3, 4, 560), c), f => f.Format((object)new TimeSpan(1, 2, 3, 4, 560), c)),
+                (f => f.Format(-1.5, c, true), f => f.Format((object)(-1.5), c, true)),
+            };
+
+            foreach (var formatString in new[] { "#,##0.00", "0", "0%", "General", "@", "0.0E+00", "# ?/?", "yyyy-mm-dd hh:mm:ss.0", "[h]:mm:ss.00", "[Red]0;[Blue]-0;\"zero\"" })
+            {
+                var format = new NumberFormat(formatString);
+                for (var i = 0; i < cases.Length; i++)
+                    await Assert.That(cases[i].Typed(format)).IsEqualTo(cases[i].Boxed(format));
+            }
+
+            await Test(123456792f, "0", "123456792");
+            await Assert.That(new NumberFormat("0.00").Format(1234.56f, c)).IsEqualTo("1234.56");
+
+            // 2^24 + 1 is not a float; a ulong must not be routed through the float overload
+            await Assert.That(new NumberFormat("0").Format(16777217UL, c)).IsEqualTo("16777217");
+            await Assert.That(new NumberFormat("0").Format(16777217u, c)).IsEqualTo("16777217");
         }
 
         [Test]

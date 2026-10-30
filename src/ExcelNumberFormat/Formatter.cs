@@ -1,28 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Numerics;
 using System.Text;
 
 namespace ExcelNumberFormat
 {
     static internal class Formatter
     {
-        static public string Format(object value, string formatString, CultureInfo culture, bool isDate1904)
-        {
-            var format = new NumberFormat(formatString);
-            if (!format.IsValid)
-                return CompatibleConvert.ToString(value, culture);
-
-            var normalized = CompatibleConvert.Normalize(value);
-            var section = Evaluator.GetSection(format.Sections, normalized);
-            if (section == null)
-                return CompatibleConvert.ToString(value, culture);
-
-            return Format(normalized, section, culture, isDate1904);
-        }
-
-        static public string Format(object value, Section node, CultureInfo culture, bool isDate1904)
+        static public string Format(FormatValue value, Section node, CultureInfo culture, bool isDate1904)
         {
             switch (node.Type)
             {
@@ -39,7 +24,7 @@ namespace ExcelNumberFormat
                         if (node.Lcid == 0xF400)
                             return excelDateTime.ToString(culture.DateTimeFormat.LongTimePattern, culture);
 
-                        return FormatDate(excelDateTime, node.GeneralTextDateDurationParts, culture);
+                        return FormatDate(excelDateTime, node.DateTokens, node.DateContainsAmPm, culture);
                     }
                     else
                     {
@@ -48,19 +33,19 @@ namespace ExcelNumberFormat
 
                 case SectionType.Duration:
                     var durationValue = RoundSubSeconds(value, GetFractionDigits(node.GeneralTextDateDurationParts));
-                    if (durationValue is TimeSpan ts)
+                    if (durationValue.Kind == FormatValueKind.TimeSpan)
                     {
-                        return FormatTimeSpan(ts, node.GeneralTextDateDurationParts, culture);
+                        return FormatTimeSpan(durationValue.TimeSpan, node.GeneralTextDateDurationParts, culture);
                     }
                     else
                     {
-                        var d = Convert.ToDouble(durationValue);
+                        var d = durationValue.ToDouble(null);
                         return FormatTimeSpan(TimeSpan.FromDays(d), node.GeneralTextDateDurationParts, culture);
                     }
 
                 case SectionType.General:
                 case SectionType.Text:
-                    return FormatGeneralText(CompatibleConvert.ToString(value, culture), node.GeneralTextDateDurationParts);
+                    return FormatGeneralText(value.ToString(culture), node.GeneralTextDateDurationParts);
 
                 case SectionType.Exponential:
                     return FormatExponential(ToDoubleHidingSign(value, node, culture), node, culture);
@@ -81,7 +66,7 @@ namespace ExcelNumberFormat
             var digits = 0;
             foreach (var token in tokens)
             {
-                if (token.StartsWith(".0"))
+                if (Token.IsSubSecond(token))
                     digits = Math.Min(token.Length - 1, 3);
             }
 
@@ -89,38 +74,31 @@ namespace ExcelNumberFormat
         }
 
         /// <summary>
-        /// Prints the fractional seconds with exactly as many digits as the format asks for.
-        /// The value is expected to be rounded already by RoundSubSeconds.
-        /// </summary>
-        static string FormatSubSeconds(int milliseconds, int digits)
-        {
-            return "." + milliseconds.ToString("D3", CultureInfo.InvariantCulture).Substring(0, Math.Min(digits, 3)).PadRight(digits, '0');
-        }
-
-        /// <summary>
         /// Rounds a date, time or duration to the displayed number of fractional second digits (half up, like Excel),
         /// so that a carry ripples into the seconds, minutes and hours.
         /// </summary>
-        static object RoundSubSeconds(object value, int digits)
+        static FormatValue RoundSubSeconds(FormatValue value, int digits)
         {
             if (digits == 0)
                 return value;
 
-            switch (value)
+            switch (value.Kind)
             {
-                case double d:
-                    return RoundSubSeconds(d, digits);
-                case DateTime dt:
+                case FormatValueKind.Number:
+                    return FormatValue.FromDouble(RoundSubSeconds(value.Number, digits));
+                case FormatValueKind.DateTime:
+                    var dt = value.DateTime;
                     var unit = TicksPerFractionDigit(digits);
                     var roundedTicks = (dt.Ticks + unit / 2) / unit * unit;
-                    return roundedTicks > DateTime.MaxValue.Ticks ? dt : new DateTime(roundedTicks, dt.Kind);
-                case TimeSpan ts:
+                    return roundedTicks > DateTime.MaxValue.Ticks ? value : FormatValue.FromDateTime(new DateTime(roundedTicks, dt.Kind));
+                case FormatValueKind.TimeSpan:
+                    var ts = value.TimeSpan;
                     var tsUnit = TicksPerFractionDigit(digits);
                     if (ts.Ticks == long.MinValue || Math.Abs(ts.Ticks) > long.MaxValue - tsUnit)
-                        return ts;
+                        return value;
 
                     var tsTicks = (Math.Abs(ts.Ticks) + tsUnit / 2) / tsUnit * tsUnit;
-                    return new TimeSpan(ts.Ticks < 0 ? -tsTicks : tsTicks);
+                    return FormatValue.FromTimeSpan(new TimeSpan(ts.Ticks < 0 ? -tsTicks : tsTicks));
                 default:
                     return value;
             }
@@ -153,18 +131,23 @@ namespace ExcelNumberFormat
                 mantissa |= 1L << 52;
             exponent -= 1075;
 
-            // Units per day: 86400 seconds, each split in 10^digits parts
-            var unitsPerDay = new BigInteger(86400) * BigInteger.Pow(10, digits);
-            var numerator = mantissa * unitsPerDay;
-            BigInteger units;
-            if (exponent >= 0)
+            // Units per day: 86400 seconds, each split in 10^digits parts. The mantissa has 53 bits and the
+            // units per day fit in 27, so the product fits in a UInt128 and nothing is allocated.
+            var unitsPerDay = 86400UL * (digits == 1 ? 10UL : digits == 2 ? 100UL : 1000UL);
+            var numerator = (UInt128)(ulong)mantissa * unitsPerDay;
+
+            // The guard above keeps the value under 1e7 days, so the exponent is always negative here
+            var shift = -exponent;
+            ulong units;
+            if (shift > 120)
             {
-                units = numerator << exponent;
+                // The value is far below one unit
+                units = 0;
             }
             else
             {
-                var denominator = BigInteger.One << -exponent;
-                units = (numerator * 2 + denominator) / (denominator * 2);
+                var denominator = UInt128.One << shift;
+                units = (ulong)((numerator * 2 + denominator) / (denominator * 2));
             }
 
             var rounded = (double)units / (double)unitsPerDay;
@@ -175,9 +158,9 @@ namespace ExcelNumberFormat
         /// Converts the value to a double. The sign is hidden in the second section and in a conditional first section,
         /// where the format itself decides how a negative number is shown.
         /// </summary>
-        static double ToDoubleHidingSign(object value, Section node, CultureInfo culture)
+        static double ToDoubleHidingSign(FormatValue value, Section node, CultureInfo culture)
         {
-            var number = Convert.ToDouble(value, culture);
+            var number = value.ToDouble(culture);
             if ((node.SectionIndex == 0 && node.Condition != null) || node.SectionIndex == 1)
                 number = Math.Abs(number);
 
@@ -186,7 +169,7 @@ namespace ExcelNumberFormat
 
         static string FormatGeneralText(string text, List<string> tokens)
         {
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             for (var i = 0; i < tokens.Count; i++)
             {
                 var token = tokens[i];
@@ -199,18 +182,18 @@ namespace ExcelNumberFormat
                     FormatLiteral(token, result);
                 }
             }
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         private static string FormatTimeSpan(TimeSpan timeSpan, List<string> tokens, CultureInfo culture)
         {
             // NOTE/TODO: assumes there is exactly one [hh], [mm] or [ss] using the integer part of TimeSpan.TotalXXX when formatting.
             // The timeSpan input is then truncated to the remainder fraction, which is used to format mm and/or ss.
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             var containsMilliseconds = false;
             for (var i = tokens.Count - 1; i >= 0; i--)
             {
-                if (tokens[i].StartsWith(".0"))
+                if (Token.IsSubSecond(tokens[i]))
                 {
                     containsMilliseconds = true;
                     break;
@@ -225,7 +208,7 @@ namespace ExcelNumberFormat
                 {
                     var value = timeSpan.Minutes;
                     var digits = token.Length;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                 }
                 else if (token.StartsWith("s", StringComparison.OrdinalIgnoreCase))
                 {
@@ -233,31 +216,31 @@ namespace ExcelNumberFormat
                     var formatMs = containsMilliseconds ? 0 : timeSpan.Milliseconds / 1000D;
                     var value = (int)Math.Round(timeSpan.Seconds + formatMs, 0, MidpointRounding.AwayFromZero);
                     var digits = token.Length;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                 }
                 else if (token.StartsWith("[h", StringComparison.OrdinalIgnoreCase))
                 {
                     var value = (long)timeSpan.TotalHours;
                     var digits = token.Length - 2;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                     timeSpan = new TimeSpan(0, 0, Math.Abs(timeSpan.Minutes), Math.Abs(timeSpan.Seconds), Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (token.StartsWith("[m", StringComparison.OrdinalIgnoreCase))
                 {
                     var value = (long)timeSpan.TotalMinutes;
                     var digits = token.Length - 2;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                     timeSpan = new TimeSpan(0, 0, 0, Math.Abs(timeSpan.Seconds), Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (token.StartsWith("[s", StringComparison.OrdinalIgnoreCase))
                 {
                     var value = (long)timeSpan.TotalSeconds;
                     var digits = token.Length - 2;
-                    result.Append(value.ToString("D" + digits));
+                    AppendPadded(result, value, digits);
                     timeSpan = new TimeSpan(0, 0, 0, 0, Math.Abs(timeSpan.Milliseconds));
                 }
-                else if (token.StartsWith(".0")) {
-                    result.Append(FormatSubSeconds(timeSpan.Milliseconds, token.Length - 1));
+                else if (Token.IsSubSecond(token)) {
+                    AppendSubSeconds(result, timeSpan.Milliseconds, token.Length - 1);
                 }
                 else
                 {
@@ -265,194 +248,157 @@ namespace ExcelNumberFormat
                 }
             }
 
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
-        private static string FormatDate(ExcelDateTime date, List<string> tokens, CultureInfo culture)
+        private static string FormatDate(ExcelDateTime date, DateToken[] tokens, bool containsAmPm, CultureInfo culture)
         {
-            var containsAmPm = ContainsAmPm(tokens);
-
-            var result = new StringBuilder();
-            for (var i = 0; i < tokens.Count; i++)
+            var result = StringBuilderCache.Acquire();
+            for (var i = 0; i < tokens.Length; i++)
             {
                 var token = tokens[i];
 
-                if (token.StartsWith("y", StringComparison.OrdinalIgnoreCase))
+                switch (token.Kind)
                 {
-                    // year
-                    var digits = token.Length;
-                    if (digits < 2)
-                        digits = 2;
-                    if (digits == 3)
-                        digits = 4;
+                    case DateTokenKind.Year:
+                        AppendPadded(result, token.Digits == 2 ? date.Year % 100 : date.Year, token.Digits);
+                        break;
 
-                    var year = date.Year;
-                    if (digits == 2)
-                        year = year % 100;
+                    case DateTokenKind.Minute:
+                        AppendPadded(result, date.Minute, token.Digits);
+                        break;
 
-                    result.Append(year.ToString("D" + digits));
-                }
-                else if (token.StartsWith("m", StringComparison.OrdinalIgnoreCase))
-                {
-                    // If  "m" or "mm" code is used immediately after the "h" or "hh" code (for hours) or immediately before 
-                    // the "ss" code (for seconds), the application shall display minutes instead of the month. 
-                    if (LookBackDatePart(tokens, i - 1, "h") || LookAheadDatePart(tokens, i + 1, "s"))
-                    {
-                        var digits = token.Length;
-                        result.Append(date.Minute.ToString("D" + digits));
-                    }
-                    else
-                    {
-                        var digits = token.Length;
-                        if (digits == 3)
+                    case DateTokenKind.Month:
+                        if (token.Digits == 3)
                         {
                             result.Append(culture.DateTimeFormat.AbbreviatedMonthNames[date.Month - 1]);
                         }
-                        else if (digits == 4)
+                        else if (token.Digits == 4)
                         {
                             result.Append(culture.DateTimeFormat.MonthNames[date.Month - 1]);
                         }
-                        else if (digits == 5)
+                        else if (token.Digits == 5)
                         {
                             result.Append(culture.DateTimeFormat.MonthNames[date.Month - 1][0]);
                         }
                         else
                         {
-                            result.Append(date.Month.ToString("D" + digits));
+                            AppendPadded(result, date.Month, token.Digits);
                         }
-                    }
-                }
-                else if (token.StartsWith("d", StringComparison.OrdinalIgnoreCase))
-                {
-                    var digits = token.Length;
-                    if (digits == 3)
-                    {
-                        // Sun-Sat
-                        result.Append(culture.DateTimeFormat.AbbreviatedDayNames[(int)date.DayOfWeek]);
-                    }
-                    else if (digits == 4)
-                    {
-                        // Sunday-Saturday
-                        result.Append(culture.DateTimeFormat.DayNames[(int)date.DayOfWeek]);
-                    }
-                    else
-                    {
-                        result.Append(date.Day.ToString("D" + digits));
-                    }
-                }
-                else if (token.StartsWith("h", StringComparison.OrdinalIgnoreCase))
-                {
-                    var digits = token.Length;
-                    if (containsAmPm)
-                        result.Append(((date.Hour + 11) % 12 + 1).ToString("D" + digits));
-                    else
-                        result.Append(date.Hour.ToString("D" + digits));
-                }
-                else if (token.StartsWith("s", StringComparison.OrdinalIgnoreCase))
-                {
-                    var digits = token.Length;
-                    result.Append(date.Second.ToString("D" + digits));
-                }
-                else if (token.StartsWith("g", StringComparison.OrdinalIgnoreCase))
-                {
-                    var era = culture.DateTimeFormat.Calendar.GetEra(date.AdjustedDateTime);
-                    var digits = token.Length;
-                    if (digits < 3)
-                    {
-                        result.Append(culture.DateTimeFormat.GetAbbreviatedEraName(era));
-                    }
-                    else
-                    {
-                        result.Append(culture.DateTimeFormat.GetEraName(era));
-                    }
-                }
-                else if (string.Compare(token, "am/pm", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    var ampm = date.ToString("tt", CultureInfo.InvariantCulture);
-                    result.Append(ampm.ToUpperInvariant());
-                }
-                else if (string.Compare(token, "a/p", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    var ampm = date.ToString("%t", CultureInfo.InvariantCulture);
-                    if (char.IsUpper(token[0]))
-                    {
-                        result.Append(ampm.ToUpperInvariant());
-                    }
-                    else
-                    {
-                        result.Append(ampm.ToLowerInvariant());
-                    }
-                }
-                else if (token.StartsWith(".0"))
-                {
-                    result.Append(FormatSubSeconds(date.Millisecond, token.Length - 1));
-                }
-                else if (token == "/")
-                {
-                    result.Append(culture.DateTimeFormat.DateSeparator);
-                }
-                else if (token == ",")
-                {
-                    while (i < tokens.Count - 1 && tokens[i + 1] == ",")
-                    {
-                        i++;
-                    }
 
-                    result.Append(",");
-                }
-                else
-                {
-                    FormatLiteral(token, result);
+                        break;
+
+                    case DateTokenKind.Day:
+                        if (token.Digits == 3)
+                        {
+                            // Sun-Sat
+                            result.Append(culture.DateTimeFormat.AbbreviatedDayNames[(int)date.DayOfWeek]);
+                        }
+                        else if (token.Digits == 4)
+                        {
+                            // Sunday-Saturday
+                            result.Append(culture.DateTimeFormat.DayNames[(int)date.DayOfWeek]);
+                        }
+                        else
+                        {
+                            AppendPadded(result, date.Day, token.Digits);
+                        }
+
+                        break;
+
+                    case DateTokenKind.Hour:
+                        AppendPadded(result, containsAmPm ? (date.Hour + 11) % 12 + 1 : date.Hour, token.Digits);
+                        break;
+
+                    case DateTokenKind.Second:
+                        AppendPadded(result, date.Second, token.Digits);
+                        break;
+
+                    case DateTokenKind.Era:
+                        var era = culture.DateTimeFormat.Calendar.GetEra(date.AdjustedDateTime);
+                        if (token.Digits < 3)
+                        {
+                            result.Append(culture.DateTimeFormat.GetAbbreviatedEraName(era));
+                        }
+                        else
+                        {
+                            result.Append(culture.DateTimeFormat.GetEraName(era));
+                        }
+
+                        break;
+
+                    case DateTokenKind.AmPm:
+                        result.Append(date.Hour < 12 ? "AM" : "PM");
+                        break;
+
+                    case DateTokenKind.AmPmShort:
+                        if (token.IsUpper)
+                            result.Append(date.Hour < 12 ? 'A' : 'P');
+                        else
+                            result.Append(date.Hour < 12 ? 'a' : 'p');
+
+                        break;
+
+                    case DateTokenKind.SubSecond:
+                        AppendSubSeconds(result, date.Millisecond, token.Digits);
+                        break;
+
+                    case DateTokenKind.DateSeparator:
+                        result.Append(culture.DateTimeFormat.DateSeparator);
+                        break;
+
+                    case DateTokenKind.Comma:
+                        result.Append(',');
+                        break;
+
+                    default:
+                        result.Append(token.Text);
+                        break;
                 }
             }
 
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
-        private static bool LookAheadDatePart(List<string> tokens, int fromIndex, string startsWith)
+        private static readonly long[] PowersOfTen = { 1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000 };
+
+        private static readonly string[] PaddedFormats = { "D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9" };
+
+        /// <summary>
+        /// Appends a number left-padded with zeros to at least the given number of digits, like ToString("D" + digits) does.
+        /// </summary>
+        private static void AppendPadded(StringBuilder result, long value, int digits)
         {
-            for (var i = fromIndex; i < tokens.Count; i++)
+            if (value >= 0 && digits < PowersOfTen.Length && value < PowersOfTen[digits])
             {
-                var token = tokens[i];
-                if (token.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase))
-                    return true;
-                if (Token.IsDatePart(token))
-                    return false;
+                for (var place = digits - 1; place >= 0; place--)
+                    result.Append((char)('0' + value / PowersOfTen[place] % 10));
+
+                return;
             }
 
-            return false;
+            result.Append(value.ToString(digits < PaddedFormats.Length ? PaddedFormats[digits] : "D" + digits.ToString(CultureInfo.InvariantCulture)));
         }
 
-        private static bool LookBackDatePart(List<string> tokens, int fromIndex, string startsWith)
+        /// <summary>
+        /// Appends the fractional seconds with exactly as many digits as the format asks for.
+        /// The value is expected to be rounded already by RoundSubSeconds.
+        /// </summary>
+        static void AppendSubSeconds(StringBuilder result, int milliseconds, int digits)
         {
-            for (var i = fromIndex; i >= 0; i--)
+            if (milliseconds < 0 || milliseconds > 999)
             {
-                var token = tokens[i];
-                if (token.StartsWith(startsWith, StringComparison.OrdinalIgnoreCase))
-                    return true;
-                if (Token.IsDatePart(token))
-                    return false;
+                result.Append("." + milliseconds.ToString("D3", CultureInfo.InvariantCulture).Substring(0, Math.Min(digits, 3)).PadRight(digits, '0'));
+                return;
             }
 
-            return false;
-        }
-
-        private static bool ContainsAmPm(List<string> tokens)
-        {
-            foreach (var token in tokens)
+            result.Append('.');
+            for (var i = 0; i < digits; i++)
             {
-                if (string.Compare(token, "am/pm", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    return true;
-                }
-
-                if (string.Compare(token, "a/p", StringComparison.OrdinalIgnoreCase) == 0)
-                {
-                    return true;
-                }
+                result.Append(i == 0 ? (char)('0' + milliseconds / 100) :
+                              i == 1 ? (char)('0' + milliseconds / 10 % 10) :
+                              i == 2 ? (char)('0' + milliseconds % 10) : '0');
             }
-
-            return false;
         }
 
         static string FormatNumber(double value, DecimalSection format, CultureInfo culture)
@@ -461,9 +407,9 @@ namespace ExcelNumberFormat
             value = value / format.ThousandDivisor;
             value = value * format.PercentMultiplier;
 
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             FormatNumber(value, format.BeforeDecimal, format.DecimalSeparator, format.AfterDecimal, thousandSeparator, culture, result);
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         static void FormatNumber(double value, List<string> beforeDecimal, bool decimalSeparator, List<string> afterDecimal, bool thousandSeparator, CultureInfo culture, StringBuilder result)
@@ -473,9 +419,9 @@ namespace ExcelNumberFormat
                 signitificantDigits = GetDigitCount(afterDecimal);
 
             var valueString = RoundToFixed(Math.Abs(value), signitificantDigits);
-            var valueStrings = valueString.Split('.');
-            var thousandsString = valueStrings[0];
-            var decimalString = valueStrings.Length > 1 ? valueStrings[1].TrimEnd('0') : "";
+            var decimalPoint = valueString.IndexOf('.');
+            var thousandsString = decimalPoint < 0 ? valueString : valueString.Substring(0, decimalPoint);
+            var decimalString = decimalPoint < 0 ? "" : valueString.Substring(decimalPoint + 1).TrimEnd('0');
 
             if (value < 0)
             {
@@ -501,16 +447,46 @@ namespace ExcelNumberFormat
         /// Formats a non-negative value with a fixed number of decimals, rounding half away from zero like Excel.
         /// The double is first reduced to 15 significant digits, as Excel does, so 2.675 rounds to 2.68.
         /// </summary>
+        // "F0" to "F15", so the common digit counts do not build a format string on every call
+        private static readonly string[] FixedFormats =
+        {
+            "F0", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12", "F13", "F14", "F15"
+        };
+
+        private static readonly double[] Pow10 =
+        {
+            1e0, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15
+        };
+
+        static string FixedFormat(int digits)
+        {
+            return digits < FixedFormats.Length ? FixedFormats[digits] : "F" + digits.ToString(CultureInfo.InvariantCulture);
+        }
+
         static string RoundToFixed(double value, int digits)
         {
+            // Double.ToString("F") is exact, so it only disagrees with Excel's 15 digit rounding at or very near a tie.
+            // Away from a tie the plain format gives the same digits and skips the string/decimal round trip below.
+            // The scaled value stays under 1e9, which keeps the error in its fractional part well below the margin.
+            if (digits < FixedFormats.Length && value < 1e9)
+            {
+                var scaled = value * Pow10[digits];
+                if (scaled < 1e9)
+                {
+                    var fraction = scaled - Math.Floor(scaled);
+                    if (Math.Abs(fraction - 0.5) > 1e-6)
+                        return value.ToString(FixedFormats[digits], CultureInfo.InvariantCulture);
+                }
+            }
+
             if (digits <= 28 && value < 7.9e28)
             {
                 var decimalValue = decimal.Parse(value.ToString("G15", CultureInfo.InvariantCulture), NumberStyles.Float, CultureInfo.InvariantCulture);
                 var rounded = Math.Round(decimalValue, digits, MidpointRounding.AwayFromZero);
-                return rounded.ToString("F" + digits, CultureInfo.InvariantCulture);
+                return rounded.ToString(FixedFormat(digits), CultureInfo.InvariantCulture);
             }
 
-            return value.ToString("F" + digits, CultureInfo.InvariantCulture);
+            return value.ToString(FixedFormat(digits), CultureInfo.InvariantCulture);
         }
 
         /// <summary>
@@ -654,7 +630,7 @@ namespace ExcelNumberFormat
                 }
             }
 
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
             FormatNumber(mantissa, format.Exponential.BeforeDecimal, format.Exponential.DecimalSeparator, format.Exponential.AfterDecimal, false, culture, result);
 
             result.Append(format.Exponential.ExponentialToken[0]);
@@ -669,7 +645,7 @@ namespace ExcelNumberFormat
             }
 
             FormatThousands(Math.Abs(exponent).ToString(CultureInfo.InvariantCulture), false, false, format.Exponential.Power, culture, result);
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         static string FormatFraction(double value, Section format, CultureInfo culture)
@@ -723,7 +699,7 @@ namespace ExcelNumberFormat
             var numeratorZeros = GetZeroCount(format.Fraction.Numerator);
             var hideFraction = (format.Fraction.IntegerPart != null && numerator == 0 && numeratorZeros == 0);
 
-            var result = new StringBuilder();
+            var result = StringBuilderCache.Acquire();
 
             if (sign)
                 result.Append("-");
@@ -760,7 +736,7 @@ namespace ExcelNumberFormat
             if (format.Fraction.FractionSuffix != null)
                 FormatThousands("", false, false, format.Fraction.FractionSuffix, culture, result);
 
-            return result.ToString();
+            return StringBuilderCache.GetStringAndRelease(result);
         }
 
         // Adapted from ssf.js 'frac()' helper
@@ -912,29 +888,36 @@ namespace ExcelNumberFormat
 
         static void FormatLiteral(string token, StringBuilder result)
         {
-            string literal = string.Empty;
+            result.Append(GetLiteral(token));
+        }
+
+        /// <summary>
+        /// The text a literal token prints: commas are skipped, quotes and escapes are removed.
+        /// </summary>
+        internal static string GetLiteral(string token)
+        {
             if (token == ",")
             {
-                ; // skip commas
+                return string.Empty; // skip commas
             }
-            else if (token.Length == 2 && (token[0] == '*' || token[0] == '\\'))
+
+            if (token.Length == 2 && (token[0] == '*' || token[0] == '\\'))
             {
                 // TODO: * = repeat to fill cell
-                literal = token[1].ToString();
+                return token[1].ToString();
             }
-            else if (token.Length == 2 && token[0] == '_')
+
+            if (token.Length == 2 && token[0] == '_')
             {
-                literal = " ";
+                return " ";
             }
-            else if (token.StartsWith("\""))
+
+            if (token.Length > 0 && token[0] == '"')
             {
-                literal = token.Substring(1, token.Length - 2);
+                return token.Substring(1, token.Length - 2);
             }
-            else
-            {
-                literal = token;
-            }
-            result.Append(literal);
+
+            return token;
         }
     }
 }

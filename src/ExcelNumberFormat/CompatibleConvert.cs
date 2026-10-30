@@ -6,37 +6,17 @@ namespace ExcelNumberFormat
     internal static class CompatibleConvert
     {
         /// <summary>
-        /// Maps the other numeric and date/time types onto the double, <see cref="DateTime"/> and <see cref="TimeSpan"/> values the formatter handles.
-        /// Other values are returned unchanged.
+        /// Widens a float to a double. Whole numbers that print as integers widen exactly, 123456792f stays 123456792.
+        /// Others go through a short string, so 1234.56f becomes 1234.56 and not 1234.56005859375.
+        /// Very large floats keep 7 significant digits, as General does.
         /// </summary>
-        public static object Normalize(object value)
+        public static double SingleToDouble(float f)
         {
-            switch (value)
-            {
-                case byte _:
-                case sbyte _:
-                case ushort _:
-                case uint _:
-                case long _:
-                case ulong _:
-                case decimal _:
-                    return Convert.ToDouble(value, CultureInfo.InvariantCulture);
-                case float f:
-                    // Whole numbers that print as integers widen exactly, 123456792f stays 123456792.
-                    if (float.IsNaN(f) || float.IsInfinity(f) || (f == Math.Floor(f) && Math.Abs(f) < 1e15f))
-                        return (double)f;
+            if (float.IsNaN(f) || float.IsInfinity(f) || (f == Math.Floor(f) && Math.Abs(f) < 1e15f))
+                return f;
 
-                    // Others go through a short string, so 1234.56f becomes 1234.56 and not 1234.56005859375.
-                    // Very large floats keep 7 significant digits, as General does.
-                    var format = f == Math.Floor(f) ? "G7" : "R";
-                    return double.Parse(f.ToString(format, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
-                case DateOnly d:
-                    return d.ToDateTime(TimeOnly.MinValue);
-                case TimeOnly t:
-                    return t.Ticks / (double)TimeSpan.TicksPerDay;
-                default:
-                    return value;
-            }
+            var format = f == Math.Floor(f) ? "G7" : "R";
+            return double.Parse(f.ToString(format, CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
         }
 
         /// <summary>

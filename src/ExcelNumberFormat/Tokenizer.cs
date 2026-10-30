@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 
 namespace ExcelNumberFormat
 {
@@ -17,6 +18,33 @@ namespace ExcelNumberFormat
         public int Length => formatString?.Length ?? 0;
 
         public bool HasMore => formatStringPosition < Length;
+
+        // Most tokens are a single ASCII character, so share one string per character instead of allocating a substring each time
+        private static readonly string[] SingleCharacterTokens = CreateSingleCharacterTokens();
+
+        private static string[] CreateSingleCharacterTokens()
+        {
+            var tokens = new string[128];
+            for (var i = 0; i < tokens.Length; i++)
+                tokens[i] = string.Intern(((char)i).ToString());
+
+            return tokens;
+        }
+
+        /// <summary>
+        /// Returns the text of a token, shared when it is a single ASCII character.
+        /// </summary>
+        public string Token(int startIndex, int length)
+        {
+            if (length == 1)
+            {
+                var c = formatString[startIndex];
+                if (c < 128)
+                    return SingleCharacterTokens[c];
+            }
+
+            return formatString.Substring(startIndex, length);
+        }
 
         public string Substring(int startIndex, int length)
         {
@@ -72,6 +100,18 @@ namespace ExcelNumberFormat
             return true;
         }
 
+        public bool ReadOneOf(SearchValues<char> values)
+        {
+            var c = Peek();
+            if (c >= 0 && values.Contains((char)c))
+            {
+                Advance();
+                return true;
+            }
+
+            return false;
+        }
+
         public bool ReadOneOf(string s)
         {
             if (PeekOneOf(0, s))
@@ -93,7 +133,7 @@ namespace ExcelNumberFormat
                 var c2 = (char)Peek(i);
                 if (ignoreCase)
                 {
-                    if (char.ToLower(c1) != char.ToLower(c2)) return false;
+                    if (char.ToLowerInvariant(c1) != char.ToLowerInvariant(c2)) return false;
                 }
                 else
                 {

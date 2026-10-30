@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 
@@ -89,7 +90,7 @@ namespace ExcelNumberFormat
                     hasTextPart |= true;
                     tokens.Add(token);
                 }
-                else if (token.StartsWith("["))
+                else if (token.Length > 0 && token[0] == '[')
                 {
                     // Does not add to tokens. Absolute/elapsed time tokens
                     // also start with '[', but handled as date part above
@@ -140,6 +141,8 @@ namespace ExcelNumberFormat
             ExponentialSection exponential = null;
             DecimalSection number = null;
             List<string> generalTextDateDuration = null;
+            DateToken[] dateTokens = null;
+            var dateContainsAmPm = false;
 
             if (hasDateParts)
             {
@@ -153,6 +156,9 @@ namespace ExcelNumberFormat
                 }
 
                 ParseMilliseconds(tokens, out generalTextDateDuration);
+
+                if (type == SectionType.Date)
+                    dateTokens = DateToken.Create(generalTextDateDuration, out dateContainsAmPm);
             }
             else if (hasGeneralPart)
             {
@@ -193,7 +199,9 @@ namespace ExcelNumberFormat
                 Exponential = exponential,
                 Number = number,
                 Lcid = lcid,
-                GeneralTextDateDurationParts = generalTextDateDuration
+                GeneralTextDateDurationParts = generalTextDateDuration,
+                DateTokens = dateTokens,
+                DateContainsAmPm = dateContainsAmPm
             };
         }
 
@@ -223,7 +231,7 @@ namespace ExcelNumberFormat
                 {
                     remainder.Add(token);
                 }
-                else if (token.StartsWith("["))
+                else if (token.Length > 0 && token[0] == '[')
                 {
                     // ignore
                 }
@@ -276,6 +284,10 @@ namespace ExcelNumberFormat
             }
         }
 
+        private static readonly SearchValues<char> SymbolCharacters = SearchValues.Create("#?,!&%+-$€£0123456789{}():;/.@ ");
+
+        private static readonly SearchValues<char> Digits = SearchValues.Create("0123456789");
+
         private static string ReadToken(Tokenizer reader, out bool syntaxError)
         {
             var offset = reader.Position;
@@ -284,7 +296,7 @@ namespace ExcelNumberFormat
                 reader.ReadEnclosed('[', ']') ||
 
                 // Symbols
-                reader.ReadOneOf("#?,!&%+-$€£0123456789{}():;/.@ ") ||
+                reader.ReadOneOf(SymbolCharacters) ||
                 reader.ReadString("e+", true) ||
                 reader.ReadString("e-", true) ||
                 reader.ReadString("General", true) ||
@@ -307,7 +319,7 @@ namespace ExcelNumberFormat
             {
                 syntaxError = false;
                 var length = reader.Position - offset;
-                return reader.Substring(offset, length);
+                return reader.Token(offset, length);
             }
 
             syntaxError = reader.Position < reader.Length;
@@ -372,22 +384,22 @@ namespace ExcelNumberFormat
         {
             // NFPartCondNum = [ASCII-HYPHEN-MINUS] NFPartIntNum [INTL-CHAR-DECIMAL-SEP NFPartIntNum] [NFPartExponential NFPartIntNum]
             tokenizer.ReadString("-");
-            while (tokenizer.ReadOneOf("0123456789"))
+            while (tokenizer.ReadOneOf(Digits))
             {
             }
 
             if (tokenizer.ReadString("."))
             {
-                while (tokenizer.ReadOneOf("0123456789"))
+                while (tokenizer.ReadOneOf(Digits))
                 {
                 }
             }
 
             if (tokenizer.ReadString("e+", true) || tokenizer.ReadString("e-", true))
             {
-                if (tokenizer.ReadOneOf("0123456789"))
+                if (tokenizer.ReadOneOf(Digits))
                 {
-                    while (tokenizer.ReadOneOf("0123456789"))
+                    while (tokenizer.ReadOneOf(Digits))
                     {
                     }
                 }
@@ -439,7 +451,7 @@ namespace ExcelNumberFormat
         private static bool TryParseCurrencySymbol(string token, out string currencySymbol)
         {
             if (string.IsNullOrEmpty(token)
-                || !token.StartsWith("$"))
+                || token[0] != '$')
             {
                 currencySymbol = null;
                 return false;
