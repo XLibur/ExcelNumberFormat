@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 
 namespace Xlibur.ExcelNumberFormat
@@ -34,7 +35,8 @@ namespace Xlibur.ExcelNumberFormat
                     return FormatNumber(number, node.Number, culture);
 
                 case SectionType.Date:
-                    if (ExcelDateTime.TryConvert(value, isDate1904, culture, out var excelDateTime))
+                    var dateValue = RoundSubSeconds(value, GetFractionDigits(node.GeneralTextDateDurationParts));
+                    if (ExcelDateTime.TryConvert(dateValue, isDate1904, culture, out var excelDateTime))
                     {
                         // System long date/time: the rest of the format is ignored
                         if (node.Lcid == 0xF800)
@@ -50,13 +52,14 @@ namespace Xlibur.ExcelNumberFormat
                     }
 
                 case SectionType.Duration:
-                    if (value is TimeSpan ts)
+                    var durationValue = RoundSubSeconds(value, GetFractionDigits(node.GeneralTextDateDurationParts));
+                    if (durationValue is TimeSpan ts)
                     {
                         return FormatTimeSpan(ts, node.GeneralTextDateDurationParts, culture);
                     }
                     else
                     {
-                        var d = Convert.ToDouble(value);
+                        var d = Convert.ToDouble(durationValue);
                         return FormatTimeSpan(TimeSpan.FromDays(d), node.GeneralTextDateDurationParts, culture);
                     }
 
@@ -73,6 +76,104 @@ namespace Xlibur.ExcelNumberFormat
                 default:
                     throw new InvalidOperationException("Unknown number format section");
             }
+        }
+
+        /// <summary>
+        /// Number of fractional second digits requested by a ".0" token, or 0 if there is none. Excel supports up to 3.
+        /// </summary>
+        static int GetFractionDigits(List<string> tokens)
+        {
+            var digits = 0;
+            foreach (var token in tokens)
+            {
+                if (token.StartsWith(".0"))
+                    digits = Math.Min(token.Length - 1, 3);
+            }
+
+            return digits;
+        }
+
+        /// <summary>
+        /// Prints the fractional seconds with exactly as many digits as the format asks for.
+        /// The value is expected to be rounded already by RoundSubSeconds.
+        /// </summary>
+        static string FormatSubSeconds(int milliseconds, int digits)
+        {
+            return "." + milliseconds.ToString("D3", CultureInfo.InvariantCulture).Substring(0, Math.Min(digits, 3)).PadRight(digits, '0');
+        }
+
+        /// <summary>
+        /// Rounds a date, time or duration to the displayed number of fractional second digits (half up, like Excel),
+        /// so that a carry ripples into the seconds, minutes and hours.
+        /// </summary>
+        static object RoundSubSeconds(object value, int digits)
+        {
+            if (digits == 0)
+                return value;
+
+            switch (value)
+            {
+                case double d:
+                    return RoundSubSeconds(d, digits);
+                case DateTime dt:
+                    var unit = TicksPerFractionDigit(digits);
+                    var roundedTicks = (dt.Ticks + unit / 2) / unit * unit;
+                    return roundedTicks > DateTime.MaxValue.Ticks ? dt : new DateTime(roundedTicks, dt.Kind);
+                case TimeSpan ts:
+                    var tsUnit = TicksPerFractionDigit(digits);
+                    if (ts.Ticks == long.MinValue || Math.Abs(ts.Ticks) > long.MaxValue - tsUnit)
+                        return ts;
+
+                    var tsTicks = (Math.Abs(ts.Ticks) + tsUnit / 2) / tsUnit * tsUnit;
+                    return new TimeSpan(ts.Ticks < 0 ? -tsTicks : tsTicks);
+                default:
+                    return value;
+            }
+        }
+
+        static long TicksPerFractionDigit(int digits)
+        {
+            var unit = TimeSpan.TicksPerSecond;
+            for (var i = 0; i < digits; i++)
+                unit /= 10;
+            return unit;
+        }
+
+        /// <summary>
+        /// Rounds a numeric day count to a whole number of 10^-digits seconds, half away from zero on the exact value of the double.
+        /// Excel does the same: 3661.25 seconds is stored just below .25 and shows as .2, while 12.35 is stored just above and shows as .4.
+        /// </summary>
+        static double RoundSubSeconds(double value, int digits)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || Math.Abs(value) > 1e7)
+                return value;
+
+            // |value| = mantissa * 2^exponent
+            var bits = BitConverter.DoubleToInt64Bits(Math.Abs(value));
+            var exponent = (int)((bits >> 52) & 0x7FF);
+            var mantissa = bits & 0xFFFFFFFFFFFFFL;
+            if (exponent == 0)
+                exponent++;
+            else
+                mantissa |= 1L << 52;
+            exponent -= 1075;
+
+            // Units per day: 86400 seconds, each split in 10^digits parts
+            var unitsPerDay = new BigInteger(86400) * BigInteger.Pow(10, digits);
+            var numerator = mantissa * unitsPerDay;
+            BigInteger units;
+            if (exponent >= 0)
+            {
+                units = numerator << exponent;
+            }
+            else
+            {
+                var denominator = BigInteger.One << -exponent;
+                units = (numerator * 2 + denominator) / (denominator * 2);
+            }
+
+            var rounded = (double)units / (double)unitsPerDay;
+            return value < 0 ? -rounded : rounded;
         }
 
         static string FormatGeneralText(string text, List<string> tokens)
@@ -148,9 +249,7 @@ namespace Xlibur.ExcelNumberFormat
                     timeSpan = new TimeSpan(0, 0, 0, 0, Math.Abs(timeSpan.Milliseconds));
                 }
                 else if (token.StartsWith(".0")) {
-                    var value = timeSpan.Milliseconds;
-                    var digits = token.Length - 1;
-                    result.Append("." + value.ToString("D" + digits));
+                    result.Append(FormatSubSeconds(timeSpan.Milliseconds, token.Length - 1));
                 }
                 else
                 {
@@ -278,9 +377,7 @@ namespace Xlibur.ExcelNumberFormat
                 }
                 else if (token.StartsWith(".0"))
                 {
-                    var value = date.Millisecond;
-                    var digits = token.Length - 1;
-                    result.Append("." + value.ToString("D" + digits));
+                    result.Append(FormatSubSeconds(date.Millisecond, token.Length - 1));
                 }
                 else if (token == "/")
                 {
