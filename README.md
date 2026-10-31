@@ -26,6 +26,39 @@ var format = new NumberFormat("#.##");
 Console.WriteLine(format.Format(1234.56, CultureInfo.InvariantCulture));
 ```
 
+### Examples
+
+Each row shows a format string, the value passed to `Format()` and the result with `CultureInfo.InvariantCulture`.
+
+```C#
+var text = new NumberFormat("#,##0.00").Format(1234.5678, CultureInfo.InvariantCulture); // "1,234.57"
+```
+
+Format | Value | Result
+-|-|-
+`0.00` | 1234.5678 | `1234.57`
+`#,##0.00` | 1234.5678 | `1,234.57`
+`$#,##0.00` | 1234.5 | `$1,234.50`
+`0%` | 0.256 | `26%`
+`0.0%` | 0.256 | `25.6%`
+`#,##0,"k"` | 1234567 | `1,235k`
+`0.00E+00` | 1234.5678 | `1.23E+03`
+`# ?/?` | 1.5 | `1 1/2`
+`0/8` | 0.125 | `1/8`
+`yyyy-mm-dd` | `new DateTime(2024, 7, 25, 14, 30, 0)` | `2024-07-25`
+`dddd, mmmm d, yyyy` | `new DateTime(2024, 7, 25, 14, 30, 0)` | `Thursday, July 25, 2024`
+`h:mm AM/PM` | `new DateTime(2024, 7, 25, 14, 30, 0)` | `2:30 PM`
+`yyyy-mm-dd hh:mm` | 45498.5 | `2024-07-25 12:00`
+`[h]:mm:ss` | `new TimeSpan(1, 2, 3, 4)` | `26:03:04`
+`0;(0)` | -5 | `(5)`
+`0;-0;"zero"` | 0 | `zero`
+`[>=100]"big";"small"` | 150 | `big`
+`[>=100]"big";"small"` | 50 | `small`
+`;;;"Text: "@` | `"abc"` | `Text: abc`
+`General` | 1234.5 | `1234.5`
+
+Use `IsValid` to check a format string. An invalid format, such as `[<]0`, makes `Format()` return the value as plain text.
+
 ## Features
 
 - Parses and formats most custom number formats as expected: decimal, percent, thousands, exponential, fraction, currency, date/time, duration, text.
