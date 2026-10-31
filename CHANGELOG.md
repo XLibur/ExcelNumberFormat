@@ -9,6 +9,10 @@
 
 ## Unreleased
 
+### 🐛 Bug Fixes
+
+- **NaN and infinity print as plain text in decimal formats.** `Format(double.NaN, "0.00")` returned `NaN.00`. It now returns `NaN`, and infinity returns `Infinity` or `-Infinity`, as scientific and fraction formats already did ([XLibur/ExcelNumberFormat#25](https://github.com/XLibur/ExcelNumberFormat/issues/25)).
+
 ## v1.2.2 - 2026-10-30
 
 ### 🐛 Bug Fixes
