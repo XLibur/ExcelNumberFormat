@@ -316,10 +316,23 @@ namespace ExcelNumberFormat.Tests
         {
             await Test(double.NaN, "0.00E+00", "NaN");
             await Test(double.PositiveInfinity, "0.00E+00", "Infinity");
+            await Test(double.NaN, "0.00", "NaN");
+            await Test(double.PositiveInfinity, "#,##0.00", "Infinity");
+            await Test(double.NegativeInfinity, "0.0", "-Infinity");
+            await Test(double.NaN, "0%", "NaN");
             await Test(double.NaN, "# ?/?", "NaN");
             await Test(double.PositiveInfinity, "# ?/?", "Infinity");
             await Test(double.NaN, "yyyy-mm-dd", "NaN");
             await Test(double.PositiveInfinity, "[h]:mm", "Infinity");
+        }
+
+        [Test]
+        public async Task TestSecondDecimalPointIsLiteral()
+        {
+            // Expected values were checked against Excel 16: it accepts the format and prints later points as literals
+            await Test(1234.5, "0.0.0", "1234.5.0");
+            await Test(1234.5, "#.#.#", "1234.5.");
+            await Test(1234.5, "0.0.0.0", "1234.5.0.0");
         }
 
         [Test]

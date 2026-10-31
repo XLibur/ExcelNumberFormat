@@ -449,6 +449,10 @@ namespace ExcelNumberFormat
 
         static string FormatNumber(double value, DecimalSection format, CultureInfo culture)
         {
+            // NaN and infinity have no digits to lay out
+            if (double.IsNaN(value) || double.IsInfinity(value))
+                return value.ToString(culture);
+
             bool thousandSeparator = format.ThousandSeparator;
             value = value / format.ThousandDivisor;
             value = value * format.PercentMultiplier;
